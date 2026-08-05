@@ -4,115 +4,120 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Rate limiter — live dashboard</title>
-<link rel="stylesheet" href="style.css?v=4" />
+<link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/GeistMono.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
 <header class="masthead">
   <div class="wrap">
-    <div>
-      <h1>API rate limiter</h1>
-      <p>Live dashboard — every request below hits the running FastAPI service</p>
+    <div class="brand">
+      <h1>Rate limiter</h1>
+      <span class="tag">live</span>
     </div>
-    <span class="source-link" id="connectionStatus">connecting…</span>
+    <div class="masthead-right">
+      <span class="live" id="liveIndicator"><i></i>sending</span>
+      <span class="status" id="connectionStatus"><i></i>connecting</span>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
 
-  <div class="controls">
-    <label class="field">
-      <span>Algorithm</span>
-      <select id="algorithm">
-        <option value="token_bucket">Token bucket</option>
-        <option value="fixed_window">Fixed window</option>
-        <option value="sliding_window_log">Sliding window log</option>
-        <option value="sliding_window_counter">Sliding window counter</option>
-      </select>
-    </label>
+  <section class="intro">
+    <h2>Four ways to say no.</h2>
+    <p>
+      Every request on this page hits the running FastAPI service — the same endpoint a real
+      client would call, backed by the in-memory or Redis store. Pick an algorithm, send traffic,
+      and watch what the limiter does with it.
+    </p>
+  </section>
 
-    <label class="field">
-      <span>Backend</span>
-      <select id="backend">
-        <option value="memory">In-memory</option>
-        <option value="redis">Redis</option>
-      </select>
-    </label>
+  <div class="picker">
+    <div class="segmented" role="tablist" aria-label="Rate-limiting algorithm">
+      <button type="button" role="tab" data-algo="token_bucket" aria-selected="true">Token bucket</button>
+      <button type="button" role="tab" data-algo="fixed_window" aria-selected="false">Fixed window</button>
+      <button type="button" role="tab" data-algo="sliding_window_log" aria-selected="false">Sliding window log</button>
+      <button type="button" role="tab" data-algo="sliding_window_counter" aria-selected="false">Sliding window counter</button>
+    </div>
+  </div>
 
-    <label class="field">
-      <span id="capacityLabel">Bucket size</span>
+  <div class="params">
+    <label class="param">
+      <span id="capacityLabel">bucket</span>
       <input type="number" id="capacity" value="10" min="1" max="200" />
     </label>
-
-    <label class="field" id="windowField">
-      <span>Window (s)</span>
+    <label class="param hidden" id="windowParam">
+      <span>window&nbsp;s</span>
       <input type="number" id="windowSeconds" value="10" min="1" max="60" step="1" />
     </label>
-
-    <label class="field" id="refillField">
-      <span>Refill (tok/s)</span>
+    <label class="param" id="refillParam">
+      <span>refill&nbsp;/s</span>
       <input type="number" id="refillRate" value="2" min="0.1" max="50" step="0.1" />
     </label>
-
-    <label class="field">
-      <span>Client ID</span>
+    <label class="param select">
+      <span>store</span>
+      <select id="backend">
+        <option value="memory">in-memory</option>
+        <option value="redis">redis</option>
+      </select>
+    </label>
+    <label class="param text">
+      <span>client</span>
       <input type="text" id="clientId" value="demo-client" maxlength="64" />
     </label>
-
-    <div class="button-pair">
-      <button id="applyConfig" type="button">Apply</button>
-      <button id="resetState" type="button">Reset</button>
-    </div>
+    <button class="btn btn-quiet" id="resetState" type="button">Reset</button>
   </div>
 
   <p class="error" id="configError" role="status"></p>
 
-  <section class="chart-card">
-    <div class="chart-head">
-      <h2>Available quota</h2>
-      <span class="algo-name" id="chartAlgoName">Token bucket</span>
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h3>Available quota</h3>
+        <p>Last 30 seconds</p>
+      </div>
+      <div class="readout">
+        <div><b id="statTotal">0</b><span>sent</span></div>
+        <div><i class="mark up"></i><b id="statAllowed">0</b><span>allowed</span></div>
+        <div><i class="mark down"></i><b id="statBlocked">0</b><span>rejected</span></div>
+        <div><b id="statBlockRate">0%</b><span>rejection rate</span></div>
+      </div>
     </div>
-    <p class="chart-sub" id="chartSub">Last 30 seconds. Each request is a tick — up if allowed, down if rejected.</p>
 
     <div class="canvas-shell">
-      <canvas id="chart" role="img" aria-label="Available quota over the last 30 seconds, with a tick per request marking whether it was allowed or rejected."></canvas>
+      <canvas id="chart" role="img" aria-label="Available quota over the last 30 seconds, with a tick for each request marking whether it was allowed or rejected."></canvas>
       <div class="tooltip" id="tooltip" aria-hidden="true"></div>
     </div>
 
-    <div class="legend">
-      <span><i class="swatch line"></i> Available quota</span>
-      <span><i class="swatch up"></i> Request allowed</span>
-      <span><i class="swatch down"></i> Request rejected (429)</span>
+    <div class="card-foot">
+      <span><i class="swatch line"></i> available quota</span>
+      <span><i class="swatch up"></i> allowed</span>
+      <span><i class="swatch down"></i> rejected &middot; 429</span>
     </div>
   </section>
 
-  <dl class="stats">
-    <div><dt>Requests</dt><dd id="statTotal">0</dd></div>
-    <div><dt>Allowed</dt><dd id="statAllowed">0</dd></div>
-    <div><dt>Rejected</dt><dd id="statBlocked">0</dd></div>
-    <div><dt>Rejection rate</dt><dd><span id="statBlockRate">0</span><span class="unit">%</span></dd></div>
-  </dl>
-
   <div class="actions">
-    <button id="fireOnce" class="accent" type="button">Send request</button>
-    <button id="fireBurst" type="button">Send burst of 20</button>
-    <label class="auto">
+    <button class="btn btn-primary" id="fireOnce" type="button">Send request</button>
+    <button class="btn" id="fireBurst" type="button">Burst of 20</button>
+    <label class="switch">
       <input type="checkbox" id="autoFireToggle" />
-      Auto-send
-      <input type="range" id="fireRate" min="1" max="30" value="6" aria-label="Auto-send rate in requests per second" />
-      <span class="rate-num"><span id="rateValue">6</span>/s</span>
+      Auto
+      <input type="range" id="fireRate" min="1" max="30" value="6" aria-label="Auto-send rate, requests per second" />
+      <span class="rate"><span id="rateValue">6</span>/s</span>
     </label>
   </div>
 
-  <section class="table-section">
-    <button class="table-toggle" id="tableToggle" type="button" aria-expanded="false" aria-controls="tableWrap">
+  <section class="log">
+    <button class="btn btn-quiet" id="tableToggle" type="button" aria-expanded="false" aria-controls="tableWrap">
       Show request log
     </button>
-    <div id="tableWrap" class="table-scroll" hidden>
-      <table class="data-table">
+    <div id="tableWrap" class="log-scroll" hidden>
+      <table class="log-table">
         <caption>Most recent requests, newest first.</caption>
         <thead>
-          <tr><th scope="col">Time</th><th scope="col">Outcome</th><th scope="col">Quota left</th></tr>
+          <tr><th scope="col">time</th><th scope="col">outcome</th><th scope="col">quota left</th></tr>
         </thead>
         <tbody id="tableBody"></tbody>
       </table>
@@ -120,13 +125,13 @@
   </section>
 
   <section class="reference">
-    <h2>Try it from a real client</h2>
-    <p>The same rate-limited endpoint this dashboard is driving. Run it enough times and it returns 429.</p>
+    <h3>Same endpoint, from a terminal</h3>
+    <p>Run it enough times and it starts returning 429.</p>
     <pre class="snippet" id="curlSnippet"></pre>
   </section>
 
 </main>
 
-<script src="app.js?v=4"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

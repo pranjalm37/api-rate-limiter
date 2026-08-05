@@ -5,116 +5,111 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Rate limiter — algorithm visualizer</title>
 <meta name="description" content="Interactive visualizer for four API rate-limiting algorithms: token bucket, fixed window, sliding window log, and sliding window counter." />
-<link rel="stylesheet" href="style.css?v=4" />
+<link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/GeistMono.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
 <header class="masthead">
   <div class="wrap">
-    <div>
-      <h1>API rate limiter</h1>
-      <p>Interactive visualizer for four rate-limiting algorithms</p>
+    <div class="brand">
+      <h1>Rate limiter</h1>
+      <span class="tag">client-side</span>
     </div>
-    <a class="source-link" href="https://github.com/pranjalm37/api-rate-limiter">Source on GitHub</a>
+    <div class="masthead-right">
+      <span class="live" id="liveIndicator"><i></i>live</span>
+      <a class="source-link" href="https://github.com/pranjalm37/api-rate-limiter">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        Source
+      </a>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
 
-  <p class="notice">
-    <strong>This page runs entirely in your browser.</strong>
-    The algorithms below are ported to JavaScript so the demo can be hosted as a static page.
-    The production system is a FastAPI service with concurrency-safe Redis or in-memory storage and a
-    test suite — <a href="https://github.com/pranjalm37/api-rate-limiter">see the repository</a> to run it.
-  </p>
+  <section class="intro">
+    <h2>Four ways to say no.</h2>
+    <p>
+      Each algorithm below enforces the same limit differently, and the shape of its available
+      quota gives it away. Send some traffic and watch. Everything runs in this page —
+      the production version is a FastAPI service with concurrency-safe Redis or in-memory
+      storage, <a href="https://github.com/pranjalm37/api-rate-limiter">over here</a>.
+    </p>
+  </section>
 
-  <div class="controls">
-    <label class="field">
-      <span>Algorithm</span>
-      <select id="algorithm">
-        <option value="token_bucket">Token bucket</option>
-        <option value="fixed_window">Fixed window</option>
-        <option value="sliding_window_log">Sliding window log</option>
-        <option value="sliding_window_counter">Sliding window counter</option>
-      </select>
-    </label>
-
-    <label class="field">
-      <span id="capacityLabel">Bucket size</span>
-      <input type="number" id="capacity" value="10" min="1" max="200" />
-    </label>
-
-    <label class="field" id="windowField">
-      <span>Window (s)</span>
-      <input type="number" id="windowSeconds" value="10" min="1" max="60" step="1" />
-    </label>
-
-    <label class="field" id="refillField">
-      <span>Refill (tok/s)</span>
-      <input type="number" id="refillRate" value="2" min="0.1" max="50" step="0.1" />
-    </label>
-
-    <button id="resetState" type="button">Reset</button>
+  <div class="picker">
+    <div class="segmented" role="tablist" aria-label="Rate-limiting algorithm">
+      <button type="button" role="tab" data-algo="token_bucket" aria-selected="true">Token bucket</button>
+      <button type="button" role="tab" data-algo="fixed_window" aria-selected="false">Fixed window</button>
+      <button type="button" role="tab" data-algo="sliding_window_log" aria-selected="false">Sliding window log</button>
+      <button type="button" role="tab" data-algo="sliding_window_counter" aria-selected="false">Sliding window counter</button>
+    </div>
   </div>
 
-  <section class="chart-card">
-    <div class="chart-head">
-      <h2>Available quota</h2>
-      <span class="algo-name" id="chartAlgoName">Token bucket</span>
+  <div class="params">
+    <label class="param">
+      <span id="capacityLabel">bucket</span>
+      <input type="number" id="capacity" value="10" min="1" max="200" />
+    </label>
+    <label class="param hidden" id="windowParam">
+      <span>window&nbsp;s</span>
+      <input type="number" id="windowSeconds" value="10" min="1" max="60" step="1" />
+    </label>
+    <label class="param" id="refillParam">
+      <span>refill&nbsp;/s</span>
+      <input type="number" id="refillRate" value="2" min="0.1" max="50" step="0.1" />
+    </label>
+    <button class="btn btn-quiet" id="resetState" type="button">Reset</button>
+  </div>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h3>Available quota</h3>
+        <p>Last 30 seconds</p>
+      </div>
+      <div class="readout">
+        <div><b id="statTotal">0</b><span>sent</span></div>
+        <div><i class="mark up"></i><b id="statAllowed">0</b><span>allowed</span></div>
+        <div><i class="mark down"></i><b id="statBlocked">0</b><span>rejected</span></div>
+        <div><b id="statBlockRate">0%</b><span>rejection rate</span></div>
+      </div>
     </div>
-    <p class="chart-sub" id="chartSub">Last 30 seconds. Each request is a tick: up if allowed, down if rejected.</p>
 
     <div class="canvas-shell">
-      <canvas id="chart" role="img" aria-label="Available quota over the last 30 seconds, with a tick per request marking whether it was allowed or rejected."></canvas>
+      <canvas id="chart" role="img" aria-label="Available quota over the last 30 seconds, with a tick for each request marking whether it was allowed or rejected."></canvas>
       <div class="tooltip" id="tooltip" aria-hidden="true"></div>
     </div>
 
-    <div class="legend">
-      <span><i class="swatch line"></i> Available quota</span>
-      <span><i class="swatch up"></i> Request allowed</span>
-      <span><i class="swatch down"></i> Request rejected (429)</span>
+    <div class="card-foot">
+      <span><i class="swatch line"></i> available quota</span>
+      <span><i class="swatch up"></i> allowed</span>
+      <span><i class="swatch down"></i> rejected &middot; 429</span>
     </div>
   </section>
 
-  <dl class="stats">
-    <div>
-      <dt>Requests</dt>
-      <dd id="statTotal">0</dd>
-    </div>
-    <div>
-      <dt>Allowed</dt>
-      <dd id="statAllowed">0</dd>
-    </div>
-    <div>
-      <dt>Rejected</dt>
-      <dd id="statBlocked">0</dd>
-    </div>
-    <div>
-      <dt>Rejection rate</dt>
-      <dd><span id="statBlockRate">0</span><span class="unit">%</span></dd>
-    </div>
-  </dl>
-
   <div class="actions">
-    <button id="fireOnce" class="accent" type="button">Send request</button>
-    <button id="fireBurst" type="button">Send burst of 20</button>
-    <label class="auto">
+    <button class="btn btn-primary" id="fireOnce" type="button">Send request</button>
+    <button class="btn" id="fireBurst" type="button">Burst of 20</button>
+    <label class="switch">
       <input type="checkbox" id="autoFireToggle" />
-      Auto-send
-      <input type="range" id="fireRate" min="1" max="30" value="6" aria-label="Auto-send rate in requests per second" />
-      <span class="rate-num"><span id="rateValue">6</span>/s</span>
+      Auto
+      <input type="range" id="fireRate" min="1" max="30" value="6" aria-label="Auto-send rate, requests per second" />
+      <span class="rate"><span id="rateValue">6</span>/s</span>
     </label>
   </div>
 
-  <section class="table-section">
-    <button class="table-toggle" id="tableToggle" type="button" aria-expanded="false" aria-controls="tableWrap">
+  <section class="log">
+    <button class="btn btn-quiet" id="tableToggle" type="button" aria-expanded="false" aria-controls="tableWrap">
       Show request log
     </button>
-    <div id="tableWrap" class="table-scroll" hidden>
-      <table class="data-table">
+    <div id="tableWrap" class="log-scroll" hidden>
+      <table class="log-table">
         <caption>Most recent requests, newest first.</caption>
         <thead>
-          <tr><th scope="col">Time</th><th scope="col">Outcome</th><th scope="col">Quota left</th></tr>
+          <tr><th scope="col">time</th><th scope="col">outcome</th><th scope="col">quota left</th></tr>
         </thead>
         <tbody id="tableBody"></tbody>
       </table>
@@ -122,24 +117,14 @@
   </section>
 
   <section class="reference">
-    <h2>How each algorithm decides</h2>
-    <p>Same traffic, four different rules. The active one is highlighted.</p>
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Algorithm</th>
-          <th scope="col">Accuracy</th>
-          <th scope="col">Cost per key</th>
-          <th scope="col">Behaviour</th>
-        </tr>
-      </thead>
-      <tbody id="referenceBody"></tbody>
-    </table>
+    <h3>How each one decides</h3>
+    <p>Same traffic, four different rules.</p>
+    <div id="referenceBody"></div>
   </section>
 
 </main>
 
-<script src="algorithms.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="algorithms.js?v=6"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

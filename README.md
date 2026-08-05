@@ -71,6 +71,11 @@ client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
 | Hosted at | Wherever you run `uvicorn`/Docker | [GitHub Pages](https://pranjalm37.github.io/api-rate-limiter/) (free, static, always on) |
 | Purpose | Prove the actual system works end-to-end, including the atomic Redis/memory storage | Let anyone see how the algorithms behave without you having to host a server |
 
+Both share a design and a stylesheet: Geist / Geist Mono self-hosted under
+`fonts/` (SIL OFL) so neither page has an external dependency, an algorithm tab
+strip instead of a dropdown, and readouts folded into the chart header rather
+than a row of stat tiles.
+
 `docs/algorithms.js` is a line-for-line port of `app/limiters/*.py`'s decision
 logic (same math, same edge cases) — it's a visualizer, not a second
 implementation to keep in sync by hand for anything beyond the core `check()`

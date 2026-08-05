@@ -1,18 +1,12 @@
 const API = "/api";
 const WINDOW_SECONDS = 30;
-const SAMPLE_MS = 200; // quota poll interval (a network round trip, unlike the static demo)
+const SAMPLE_MS = 200; // quota poll interval — a network round trip, unlike the static demo
 const MAX_LOG_ROWS = 200;
 
 const el = (id) => document.getElementById(id);
 
-const ALGO_LABELS = {
-  token_bucket: "Token bucket",
-  fixed_window: "Fixed window",
-  sliding_window_log: "Sliding window log",
-  sliding_window_counter: "Sliding window counter",
-};
-
 const state = {
+  algorithm: "token_bucket",
   capacity: 10,
   samples: [],
   events: [],
@@ -23,7 +17,7 @@ const state = {
   hoverX: null,
 };
 
-/* ---------------------------------------------------------------- api */
+/* ------------------------------------------------------------- api */
 
 async function api(path, opts = {}) {
   try {
@@ -39,40 +33,44 @@ async function api(path, opts = {}) {
 }
 
 function setConnected(online) {
-  el("connectionStatus").textContent = online ? "connected" : "offline";
+  const s = el("connectionStatus");
+  s.className = "status " + (online ? "online" : "offline");
+  s.lastChild.textContent = online ? "connected" : "offline";
 }
 
 function clientId() {
   return el("clientId").value.trim() || "demo-client";
 }
 
-/* ---------------------------------------------------------------- config */
+/* ------------------------------------------------------------- config */
 
-function syncAlgorithmFields() {
-  const isBucket = el("algorithm").value === "token_bucket";
-  el("refillField").classList.toggle("hidden", !isBucket);
-  el("windowField").classList.toggle("hidden", isBucket);
-  el("capacityLabel").textContent = isBucket ? "Bucket size" : "Limit";
-  el("chartAlgoName").textContent = ALGO_LABELS[el("algorithm").value];
+function syncAlgorithmUI() {
+  const isBucket = state.algorithm === "token_bucket";
+  document.querySelectorAll(".segmented button").forEach((b) => {
+    b.setAttribute("aria-selected", String(b.dataset.algo === state.algorithm));
+  });
+  el("refillParam").classList.toggle("hidden", !isBucket);
+  el("windowParam").classList.toggle("hidden", isBucket);
+  el("capacityLabel").textContent = isBucket ? "bucket" : "limit";
 }
 
 async function loadConfig() {
   const { ok, data } = await api("/config");
   setConnected(ok);
   if (!ok) return;
-  el("algorithm").value = data.algorithm;
+  state.algorithm = data.algorithm;
+  state.capacity = data.capacity;
   el("backend").value = data.backend;
   el("capacity").value = data.capacity;
   el("windowSeconds").value = data.window_seconds;
   el("refillRate").value = data.refill_rate;
-  state.capacity = data.capacity;
-  syncAlgorithmFields();
+  syncAlgorithmUI();
 }
 
 async function applyConfig() {
   el("configError").textContent = "";
   const body = {
-    algorithm: el("algorithm").value,
+    algorithm: state.algorithm,
     backend: el("backend").value,
     capacity: Number(el("capacity").value),
     window_seconds: Number(el("windowSeconds").value),
@@ -81,11 +79,11 @@ async function applyConfig() {
   const { ok, data } = await api("/config", { method: "POST", body: JSON.stringify(body) });
   if (!ok) {
     el("configError").textContent =
-      typeof data.detail === "string" ? data.detail : "Could not apply configuration.";
+      typeof data.detail === "string" ? data.detail : "Could not apply that configuration.";
     return;
   }
   state.capacity = data.capacity;
-  syncAlgorithmFields();
+  syncAlgorithmUI();
   await resetAll();
 }
 
@@ -105,7 +103,7 @@ async function resetAll() {
   draw();
 }
 
-/* ---------------------------------------------------------------- traffic */
+/* ------------------------------------------------------------- traffic */
 
 async function fireOnce() {
   const { ok, data } = await api("/limiter/check", {
@@ -124,12 +122,11 @@ async function fireOnce() {
   state.capacity = data.limit;
 
   renderStats();
-  renderTable();
 }
 
 async function fireBurst(n) {
-  // Fired concurrently: this is the server's real concurrency path, which the
-  // atomic storage layer exists to make correct.
+  // Fired concurrently on purpose: this is the server's real concurrency path,
+  // which the atomic storage layer exists to make correct.
   await Promise.all(Array.from({ length: n }, fireOnce));
 }
 
@@ -137,22 +134,23 @@ function startAuto() {
   stopAuto();
   const rate = Number(el("fireRate").value);
   state.autoTimer = setInterval(fireOnce, Math.max(1000 / rate, 25));
+  el("liveIndicator").classList.add("on");
 }
 
 function stopAuto() {
   if (state.autoTimer) clearInterval(state.autoTimer);
   state.autoTimer = null;
+  el("liveIndicator").classList.remove("on");
 }
 
-/* ---------------------------------------------------------------- readouts */
+/* ------------------------------------------------------------- readouts */
 
 function renderStats() {
   el("statTotal").textContent = state.total.toLocaleString();
   el("statAllowed").textContent = state.allowed.toLocaleString();
   el("statBlocked").textContent = state.blocked.toLocaleString();
-  el("statBlockRate").textContent = state.total
-    ? Math.round((state.blocked / state.total) * 100)
-    : 0;
+  const pct = state.total ? Math.round((state.blocked / state.total) * 100) : 0;
+  el("statBlockRate").textContent = pct + "%";
 }
 
 function renderTable() {
@@ -162,8 +160,8 @@ function renderTable() {
     .slice(-MAX_LOG_ROWS)
     .reverse()
     .map((ev) => {
-      const cls = ev.allowed ? "outcome-allowed" : "outcome-blocked";
-      const label = ev.allowed ? "Allowed" : "Rejected";
+      const cls = ev.allowed ? "allowed" : "rejected";
+      const label = ev.allowed ? "allowed" : "rejected";
       return `<tr><td>${(now - ev.t).toFixed(1)}s ago</td><td class="${cls}">${label}</td><td>${ev.remaining}</td></tr>`;
     })
     .join("");
@@ -174,12 +172,14 @@ function updateSnippet() {
     `curl -i -H "X-Client-Id: ${clientId()}" ${location.origin}/api/demo/resource`;
 }
 
-/* ---------------------------------------------------------------- chart */
+/* ------------------------------------------------------------- chart */
 
 const canvas = el("chart");
 const ctx = canvas.getContext("2d");
 let cssWidth = 0;
 let cssHeight = 0;
+
+const MONO = '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
 function palette() {
   const s = getComputedStyle(document.documentElement);
@@ -205,12 +205,12 @@ function resizeCanvas() {
 }
 
 function geometry() {
-  const padL = 34;
-  const padR = 6;
-  const padT = 12;
-  const xAxisH = 20;
-  const eventHalf = 17;
-  const gap = 14;
+  const padL = 30;
+  const padR = 34;
+  const padT = 14;
+  const xAxisH = 18;
+  const eventHalf = 16;
+  const gap = 13;
   return {
     padL,
     padR,
@@ -234,13 +234,11 @@ function drawChart() {
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-  const font = getComputedStyle(document.body).fontFamily;
   const ticks = cap <= 2 ? [0, cap] : [0, Math.round(cap / 2), cap];
   ctx.lineWidth = 1;
-  ctx.font = "500 10.5px " + font;
+  ctx.font = "500 10px " + MONO;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-
   ticks.forEach((v) => {
     const y = Math.round(yFor(v)) + 0.5;
     ctx.strokeStyle = p.grid;
@@ -249,7 +247,7 @@ function drawChart() {
     ctx.lineTo(g.padL + g.plotW, y);
     ctx.stroke();
     ctx.fillStyle = p.muted;
-    ctx.fillText(String(v), g.padL - 8, y);
+    ctx.fillText(String(v), g.padL - 7, y);
   });
 
   const samples = state.samples.filter((s) => s.t >= t0);
@@ -269,17 +267,29 @@ function drawChart() {
     ctx.lineTo(xFor(samples[samples.length - 1].t), g.plotBottom);
     ctx.lineTo(xFor(samples[0].t), g.plotBottom);
     ctx.closePath();
-    ctx.globalAlpha = 0.09;
+    ctx.globalAlpha = 0.07;
     ctx.fillStyle = p.accent;
     ctx.fill();
     ctx.restore();
 
     trace();
     ctx.strokeStyle = p.accent;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.75;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     ctx.stroke();
+
+    const last = samples[samples.length - 1];
+    const lx = xFor(last.t);
+    const ly = yFor(last.remaining);
+    ctx.fillStyle = p.accent;
+    ctx.beginPath();
+    ctx.arc(lx, ly, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = "560 11px " + MONO;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(last.remaining), lx + 7, ly);
   }
 
   const baseY = Math.round(g.eventBaseline) + 0.5;
@@ -303,11 +313,12 @@ function drawChart() {
   });
 
   ctx.fillStyle = p.muted;
+  ctx.font = "500 10px " + MONO;
   ctx.textBaseline = "alphabetic";
-  const labelY = cssHeight - 5;
+  const labelY = cssHeight - 4;
   [
-    { t: t0, text: `${WINDOW_SECONDS}s ago`, align: "left" },
-    { t: now - WINDOW_SECONDS / 2, text: `${WINDOW_SECONDS / 2}s`, align: "center" },
+    { t: t0, text: "-30s", align: "left" },
+    { t: now - WINDOW_SECONDS / 2, text: "-15s", align: "center" },
     { t: now, text: "now", align: "right" },
   ].forEach(({ t, text, align }) => {
     ctx.textAlign = align;
@@ -332,7 +343,7 @@ function draw() {
   drawChart();
 }
 
-/* ---------------------------------------------------------------- tooltip */
+/* ------------------------------------------------------------- tooltip */
 
 function updateTooltip(clientX, clientY) {
   const tip = el("tooltip");
@@ -340,7 +351,7 @@ function updateTooltip(clientX, clientY) {
   const g = geometry();
   const x = clientX - rect.left;
 
-  if (x < g.padL || x > g.padL + g.plotW || state.samples.length === 0) {
+  if (x < g.padL || x > g.padL + g.plotW || !state.samples.length) {
     tip.classList.remove("visible");
     state.hoverX = null;
     return;
@@ -366,18 +377,20 @@ function updateTooltip(clientX, clientY) {
   const blockedCount = near.length - allowedCount;
 
   let html = `<div class="tt-time">${(now - t).toFixed(1)}s ago</div>`;
-  html += `<div class="tt-row"><i class="swatch line"></i>Quota <span class="tt-val">${nearest.remaining}</span></div>`;
-  if (allowedCount) html += `<div class="tt-row"><i class="swatch up"></i>Allowed <span class="tt-val">${allowedCount}</span></div>`;
-  if (blockedCount) html += `<div class="tt-row"><i class="swatch down"></i>Rejected <span class="tt-val">${blockedCount}</span></div>`;
+  html += `<div class="tt-row"><i class="swatch line"></i>quota<span class="tt-val">${nearest.remaining}</span></div>`;
+  if (allowedCount) html += `<div class="tt-row"><i class="swatch up"></i>allowed<span class="tt-val">${allowedCount}</span></div>`;
+  if (blockedCount) html += `<div class="tt-row"><i class="swatch down"></i>rejected<span class="tt-val">${blockedCount}</span></div>`;
   tip.innerHTML = html;
   tip.classList.add("visible");
 
-  tip.style.left = `${Math.min(Math.max(x + 12, 0), rect.width - tip.offsetWidth - 2)}px`;
+  const shell = canvas.parentElement.getBoundingClientRect();
+  const offsetX = rect.left - shell.left;
+  tip.style.left = `${Math.min(Math.max(x + offsetX + 12, 0), shell.width - tip.offsetWidth - 2)}px`;
   tip.style.top = `${Math.max(clientY - rect.top - 10, 4)}px`;
   state.hoverX = x;
 }
 
-/* ---------------------------------------------------------------- loop */
+/* ------------------------------------------------------------- loop */
 
 async function sample() {
   const { ok, data } = await api(`/limiter/peek?client_id=${encodeURIComponent(clientId())}`);
@@ -398,15 +411,25 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-/* ---------------------------------------------------------------- wiring */
+/* ------------------------------------------------------------- wiring */
 
 function wire() {
-  el("algorithm").addEventListener("change", syncAlgorithmFields);
-  el("applyConfig").addEventListener("click", applyConfig);
+  document.querySelectorAll(".segmented button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.algorithm = btn.dataset.algo;
+      syncAlgorithmUI();
+      applyConfig();
+    });
+  });
+
+  ["capacity", "windowSeconds", "refillRate", "backend"].forEach((id) => {
+    el(id).addEventListener("change", applyConfig);
+  });
+
+  el("clientId").addEventListener("input", updateSnippet);
   el("resetState").addEventListener("click", resetAll);
   el("fireOnce").addEventListener("click", fireOnce);
   el("fireBurst").addEventListener("click", () => fireBurst(20));
-  el("clientId").addEventListener("input", updateSnippet);
 
   el("autoFireToggle").addEventListener("change", (e) => {
     if (e.target.checked) startAuto();
@@ -420,10 +443,10 @@ function wire() {
 
   el("tableToggle").addEventListener("click", () => {
     const wrap = el("tableWrap");
-    const nowHidden = !wrap.hidden;
-    wrap.hidden = nowHidden;
-    el("tableToggle").setAttribute("aria-expanded", String(!nowHidden));
-    el("tableToggle").textContent = nowHidden ? "Show request log" : "Hide request log";
+    const opening = wrap.hidden;
+    wrap.hidden = !opening;
+    el("tableToggle").setAttribute("aria-expanded", String(opening));
+    el("tableToggle").textContent = opening ? "Hide request log" : "Show request log";
     renderTable();
   });
 
@@ -448,5 +471,10 @@ function wire() {
   await loadConfig();
   await resetAll();
   setInterval(sample, SAMPLE_MS);
+  // Ages in the log are relative to now, so refresh on a timer too.
+  setInterval(renderTable, 500);
   requestAnimationFrame(tick);
+
+  // Canvas text rasterises at draw time, so redraw once the webfont lands.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
 })();
