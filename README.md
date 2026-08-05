@@ -4,43 +4,39 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-live-2a78d6.svg)](https://pranjalm37.github.io/api-rate-limiter/)
 
-Four rate-limiting algorithms implemented from scratch in Python, behind one
-interface, with a pluggable in-memory or Redis backend and an interactive
-visualizer that shows how each one actually behaves under load.
+Four rate limiting algorithms written without a rate limiting library, behind
+one interface, with an in-memory or Redis backend. The demo page lets you fire
+traffic at each one and watch what it does.
 
-**[→ Try the live demo](https://pranjalm37.github.io/api-rate-limiter/)**
+**[Try the live demo](https://pranjalm37.github.io/api-rate-limiter/)**
 
 ![The visualizer showing a token bucket draining under a burst, then refilling](docs/preview.png)
 
-## What this demonstrates
+## Why it's built this way
 
-Rate limiting looks trivial and isn't. This implements it directly — no
-`slowapi`, no `fastapi-limiter` — to work through the parts that are actually
-hard:
+**The algorithms behave differently, and you can see it.** Fixed window is the
+cheapest to run, but a burst landing either side of a boundary gets through at
+roughly twice the limit. A sliding window log is exact, at the cost of storing
+every timestamp. A sliding window counter approximates the log for O(1). A
+token bucket allows short bursts while still capping the long-run rate. On the
+demo page each one leaves a different shape: fixed window cliff-resets at the
+boundary, a token bucket ramps back up as it refills.
 
-**Algorithm trade-offs.** Fixed window is cheap but lets a burst straddling a
-boundary through at roughly twice the limit. A sliding window log is exact but
-stores every timestamp. A sliding window counter approximates the log at
-constant cost. A token bucket allows controlled bursts while capping the
-long-run rate. The demo makes each one's signature visible: watch the quota
-line cliff-reset under fixed window versus ramp back under a token bucket.
-
-**Concurrency correctness.** Refill-then-consume on a token bucket is a
-textbook read-modify-write race: two simultaneous requests can both read the
-same token count and both be allowed. It's implemented as one atomic step per
-backend — an `asyncio.Lock` in memory, a Lua script in Redis — and pinned by a
-test that fires 50 concurrent requests at a 5-token bucket and asserts exactly
+**Refill-then-consume is a race.** Two concurrent requests can both read the
+same token count and both get allowed. Each backend does it as one atomic step
+instead: an `asyncio.Lock` in memory, a Lua script in Redis. There's a test
+that fires 50 concurrent requests at a 5-token bucket and checks that exactly
 5 get through.
 
-**Storage that swaps without touching the algorithms.** Every limiter is
-written against the `Store` interface in `app/storage/base.py`, so the same
-algorithm code runs in-process for a demo or against Redis across many
-instances. Nothing in `app/limiters/` knows which backend it has.
+**The backend swaps without touching the algorithms.** Every limiter is
+written against the `Store` interface in `app/storage/base.py`. The same
+algorithm code runs in-process for a demo or against Redis across several
+instances, and nothing in `app/limiters/` knows the difference.
 
-**Observability without side effects.** The dashboard charts remaining quota
-over time, which needs a *non-consuming* read — otherwise the chart's own
-polling would register as traffic and corrupt what it's measuring. Hence
-`peek()` alongside `check()`, with tests asserting it never spends quota.
+**Reading quota can't cost quota.** The dashboard charts remaining quota over
+time, so it needs a read with no side effects. If it used `check()` the chart's
+own polling would count as traffic and skew what it was measuring. That's what
+`peek()` is for, and there are tests asserting it never spends anything.
 
 ## Quickstart
 
@@ -48,40 +44,39 @@ polling would register as traffic and corrupt what it's measuring. Hence
 pip install -r requirements.txt && uvicorn app.main:app --reload
 ```
 
-Then open <http://localhost:8000> for the dashboard, or `/docs` for the
-generated OpenAPI reference.
+Open <http://localhost:8000> for the dashboard, or `/docs` for the generated
+OpenAPI reference. That runs entirely in-process with no external services.
 
-Everything above runs in-process with no external services. To use the
-distributed backend:
+For the Redis backend:
 
 ```bash
 docker compose up --build
 ```
 
-That starts Redis alongside the API; switch the store to `redis` in the
+That brings up Redis alongside the API. Switch the store to `redis` in the
 dashboard, or set `RATE_LIMITER_BACKEND=redis`.
 
-## Architecture
+## Layout
 
 ```
 app/
-  limiters/          four algorithms, each implementing RateLimiter.check()/.peek()
+  limiters/          the four algorithms, each with check() and peek()
     fixed_window.py
     sliding_window_log.py
     sliding_window_counter.py
     token_bucket.py
-  storage/           pluggable backend behind one Store interface
-    memory.py        in-process, asyncio.Lock-guarded
-    redis_store.py   Redis, Lua scripts for atomic incr / token consume
+  storage/           backends behind one Store interface
+    memory.py        in-process, guarded by asyncio.Lock
+    redis_store.py   Redis, with Lua scripts for the atomic operations
   api/routes.py      /config, /limiter/check, /limiter/peek, /demo/resource
-  limiter_manager.py holds the live configuration shared by the API and the UI
-  main.py            FastAPI app; also serves the dashboard
-docs/                the static visualizer published to GitHub Pages
-frontend/            the dashboard served by FastAPI, driving the real API
-tests/               21 tests: per-algorithm, concurrency, peek, and API-level
+  limiter_manager.py the live configuration shared by the API and the UI
+  main.py            FastAPI app, also serves the dashboard
+docs/                static visualizer, published to GitHub Pages
+frontend/            dashboard served by FastAPI, driving the real API
+tests/               21 tests: per-algorithm, concurrency, peek, API
 ```
 
-A request takes this path:
+A request goes:
 
 ```
 client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
@@ -90,7 +85,7 @@ client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
                           RateLimiter (active algorithm)
                                         │
                                         ▼
-                          Store (memory or redis) — atomic ops
+                          Store (memory or redis), atomic ops
                                         │
                               allow 200 / deny 429 + Retry-After
 ```
@@ -101,21 +96,22 @@ client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
 |---|---|---|---|
 | Fixed window | Loose at edges | O(1) | Can pass ~2× the limit across a boundary |
 | Sliding window log | Exact | O(requests in window) | Correct, but stores every timestamp |
-| Sliding window counter | Approximate | O(1) | Weights two adjacent windows; good cost/accuracy trade |
-| Token bucket | Exact, burst-friendly | O(1) | Industry default — AWS API Gateway, Stripe |
+| Sliding window counter | Approximate | O(1) | Weights two adjacent windows |
+| Token bucket | Exact, burst-friendly | O(1) | What AWS API Gateway and Stripe use |
 
 ## API
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/demo/resource` | GET | A protected endpoint, limited by `X-Client-Id` (falls back to caller IP) |
+| `/api/demo/resource` | GET | A protected endpoint, keyed on `X-Client-Id` or the caller's IP |
 | `/api/limiter/check` | POST | Consume one unit of quota for a `client_id` |
-| `/api/limiter/peek` | GET | Read remaining quota **without** consuming |
+| `/api/limiter/peek` | GET | Read remaining quota without consuming any |
 | `/api/limiter/reset` | POST | Clear all limiter state |
-| `/api/config` | GET/POST | Read or change the active algorithm, backend, and limits |
+| `/api/config` | GET/POST | Read or change the algorithm, backend, and limits |
 
-`demo/resource` returns `429` with `Retry-After`, `X-RateLimit-Limit`, and
-`X-RateLimit-Remaining` — the response shape a real gateway would produce:
+When it rejects, `demo/resource` returns 429 with `Retry-After`,
+`X-RateLimit-Limit` and `X-RateLimit-Remaining`, the same shape a real gateway
+would send:
 
 ```bash
 curl -i -H "X-Client-Id: demo" http://localhost:8000/api/demo/resource
@@ -125,18 +121,18 @@ curl -i -H "X-Client-Id: demo" http://localhost:8000/api/demo/resource
 
 | | `frontend/` | `docs/` |
 |---|---|---|
-| Runs against | The real FastAPI service | Nothing — pure client-side JS |
+| Runs against | The real FastAPI service | Nothing, it's pure client-side JS |
 | Hosted at | Wherever you run it | [GitHub Pages](https://pranjalm37.github.io/api-rate-limiter/) |
-| Exists to | Prove the system works end to end, including atomic storage | Let anyone see the algorithms without hosting a server |
+| Exists to | Show the whole system working, storage included | Show the algorithms without needing a server |
 
-`docs/algorithms.js` ports the decision logic from `app/limiters/*.py` — same
-math, same edge cases — so the hosted demo behaves like the real thing without
-needing a backend. Both share a design: self-hosted Geist / Geist Mono (SIL
-OFL) so neither page has an external dependency, and allowed vs rejected
-requests are distinguished by tick *direction* as well as colour, since
-green/red alone is not separable with red-green colour blindness.
+`docs/algorithms.js` ports the decision logic out of `app/limiters/*.py` with
+the same math and the same edge cases, so the hosted page behaves like the real
+thing with no backend. Both frontends share a stylesheet and self-host Geist
+and Geist Mono (SIL OFL), so neither has an external dependency. Allowed and
+rejected requests differ by tick direction as well as colour, because green and
+red on their own aren't separable with red-green colour blindness.
 
-Regenerate the README image after a design change:
+To regenerate the screenshot after a design change:
 
 ```bash
 python scripts/screenshot.py
@@ -148,19 +144,19 @@ python scripts/screenshot.py
 pytest tests/ -v
 ```
 
-21 tests, no network or external services required. Covers each algorithm's
-limit and recovery behaviour, the concurrency guarantee, `peek()`
-non-consumption, and the API surface (including 429 headers and validation).
-CI runs them on every push and also builds the Docker image and smoke-tests
-the container.
+21 tests, no network or external services needed. They cover each algorithm's
+limit and recovery behaviour, the concurrency guarantee, `peek()` not
+consuming quota, and the API surface including 429 headers and validation. CI
+runs them on every push, then builds the Docker image and checks the container
+comes up healthy.
 
-## What I'd add next
+## Next
 
-- Per-endpoint and per-tier limits rather than one global configuration
-- A middleware wrapper so any route can be decorated instead of calling the limiter directly
-- Prometheus metrics for allow/deny rates
-- Benchmarks comparing the backends under concurrent load
+- Per-endpoint and per-tier limits instead of one global configuration
+- Middleware so any route can be decorated rather than calling the limiter directly
+- Prometheus metrics for allow and deny rates
+- Benchmarks comparing the two backends under concurrent load
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundled Geist fonts are SIL OFL 1.1.
+MIT, see [LICENSE](LICENSE). The bundled Geist fonts are SIL OFL 1.1.
