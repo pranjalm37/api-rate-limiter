@@ -7,6 +7,9 @@ algorithm in real time.
 
 ![status](https://img.shields.io/badge/tests-17%20passing-brightgreen)
 
+**[Live algorithm visualizer →](https://pranjalm37.github.io/api-rate-limiter/)**
+(runs the 4 algorithms client-side in your browser, no backend — see below)
+
 ## Why this project
 
 Rate limiting is a small system with a lot of real engineering underneath it:
@@ -59,6 +62,19 @@ client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
                                         │
                               allow (200) / deny (429 + Retry-After)
 ```
+
+## Two demos, two purposes
+
+| | `frontend/` | `docs/` |
+|---|---|---|
+| Runs against | The real FastAPI backend (`app/`) | Nothing — pure client-side JS |
+| Hosted at | Wherever you run `uvicorn`/Docker | [GitHub Pages](https://pranjalm37.github.io/api-rate-limiter/) (free, static, always on) |
+| Purpose | Prove the actual system works end-to-end, including the atomic Redis/memory storage | Let anyone see how the algorithms behave without you having to host a server |
+
+`docs/algorithms.js` is a line-for-line port of `app/limiters/*.py`'s decision
+logic (same math, same edge cases) — it's a visualizer, not a second
+implementation to keep in sync by hand for anything beyond the core `check()`
+logic.
 
 ## Running it locally
 

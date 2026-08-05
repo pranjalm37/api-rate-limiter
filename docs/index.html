@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>API Rate Limiter — Algorithm Visualizer</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <div>
+        <h1>API Rate Limiter</h1>
+        <p class="subtitle">Algorithm visualizer — fixed window · sliding window log · sliding window counter · token bucket</p>
+      </div>
+    </div>
+    <a class="repo-link" href="https://github.com/pranjalm37/api-rate-limiter" target="_blank" rel="noopener">
+      View source on GitHub ↗
+    </a>
+  </header>
+
+  <div class="banner">
+    <strong>This page runs entirely in your browser</strong> — the four algorithms below are
+    reimplemented in client-side JavaScript purely to visualize their behavior, no server involved.
+    The real system is a FastAPI backend with a concurrency-safe Redis/in-memory store and a pytest
+    suite — <a href="https://github.com/pranjalm37/api-rate-limiter" target="_blank" rel="noopener">see the repo</a>
+    to run that version locally or with Docker.
+  </div>
+
+  <main class="grid">
+    <section class="panel config-panel">
+      <h2>Configuration</h2>
+
+      <label>Algorithm
+        <select id="algorithm">
+          <option value="token_bucket">Token Bucket</option>
+          <option value="fixed_window">Fixed Window</option>
+          <option value="sliding_window_log">Sliding Window Log</option>
+          <option value="sliding_window_counter">Sliding Window Counter</option>
+        </select>
+      </label>
+
+      <label>Capacity <span class="hint" id="capacityHint">(max requests / window)</span>
+        <input type="number" id="capacity" value="10" min="1" max="1000" />
+      </label>
+
+      <label id="windowRow">Window (seconds)
+        <input type="number" id="windowSeconds" value="10" min="0.5" max="120" step="0.5" />
+      </label>
+
+      <label id="refillRow" class="hidden">Refill rate (tokens / second)
+        <input type="number" id="refillRate" value="1" min="0.1" max="100" step="0.1" />
+      </label>
+
+      <div class="button-row">
+        <button id="applyConfig" class="primary">Apply configuration</button>
+        <button id="resetState" class="ghost">Reset state</button>
+      </div>
+    </section>
+
+    <section class="panel traffic-panel">
+      <h2>Fire traffic</h2>
+
+      <div class="fire-controls">
+        <button id="fireOnce" class="primary">Fire 1 request</button>
+        <button id="fireBurst" class="ghost">Fire burst of 20</button>
+      </div>
+
+      <div class="auto-fire">
+        <label class="toggle">
+          <input type="checkbox" id="autoFireToggle" />
+          <span>Auto-fire</span>
+        </label>
+        <label class="rate-label">
+          rate: <span id="rateValue">5</span> req/s
+          <input type="range" id="fireRate" min="1" max="30" value="5" />
+        </label>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat">
+          <span class="stat-value" id="statTotal">0</span>
+          <span class="stat-label">total</span>
+        </div>
+        <div class="stat allowed">
+          <span class="stat-value" id="statAllowed">0</span>
+          <span class="stat-label">allowed</span>
+        </div>
+        <div class="stat blocked">
+          <span class="stat-value" id="statBlocked">0</span>
+          <span class="stat-label">blocked</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="statBlockRate">0%</span>
+          <span class="stat-label">block rate</span>
+        </div>
+      </div>
+
+      <div class="remaining-wrap">
+        <div class="remaining-label">
+          <span>remaining quota</span>
+          <span id="remainingText">-- / --</span>
+        </div>
+        <div class="remaining-bar"><div class="remaining-fill" id="remainingFill"></div></div>
+      </div>
+    </section>
+
+    <section class="panel chart-panel">
+      <h2>Live request timeline</h2>
+      <canvas id="chart" width="900" height="220"></canvas>
+      <div class="legend">
+        <span><i class="dot allowed"></i> allowed</span>
+        <span><i class="dot blocked"></i> blocked</span>
+      </div>
+    </section>
+
+    <section class="panel compare-panel">
+      <h2>How the four algorithms differ</h2>
+      <p>Same traffic pattern, four different rules for deciding what gets through.</p>
+      <div class="compare-grid">
+        <div class="compare-card">
+          <h3>Fixed Window</h3>
+          <p>Counts requests in fixed clock-aligned intervals. Cheapest, but a burst can land right
+          at a window boundary and effectively double up.</p>
+        </div>
+        <div class="compare-card">
+          <h3>Sliding Window Log</h3>
+          <p>Stores every request timestamp and checks the trailing window exactly. No boundary
+          burst, but cost grows with request volume.</p>
+        </div>
+        <div class="compare-card">
+          <h3>Sliding Window Counter</h3>
+          <p>Approximates the sliding window using two weighted fixed-window counters. Nearly as
+          accurate as the log, at fixed-window cost.</p>
+        </div>
+        <div class="compare-card">
+          <h3>Token Bucket</h3>
+          <p>Refills tokens continuously and allows short bursts up to capacity while still capping
+          the long-run average rate. What most production APIs use.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="algorithms.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
