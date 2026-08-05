@@ -19,3 +19,11 @@ class RateLimiter(ABC):
     @abstractmethod
     async def check(self, key: str) -> RateLimitResult:
         """Consume one unit of quota for `key` and report the outcome."""
+
+    @abstractmethod
+    async def peek(self, key: str) -> int:
+        """Report remaining quota for `key` without consuming any.
+
+        Used for observability -- the dashboard samples this to plot how
+        quota recovers over time, which must not itself count as traffic.
+        """

@@ -1,6 +1,12 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 
-from app.api.schemas import CheckRequest, CheckResponse, ConfigResponse, ConfigureRequest
+from app.api.schemas import (
+    CheckRequest,
+    CheckResponse,
+    ConfigResponse,
+    ConfigureRequest,
+    PeekResponse,
+)
 from app.limiter_manager import LimiterManager, get_manager
 
 router = APIRouter()
@@ -48,6 +54,19 @@ async def check_limiter(
         limit=result.limit,
         remaining=result.remaining,
         retry_after=result.retry_after,
+        algorithm=manager.config.algorithm,
+    )
+
+
+@router.get("/limiter/peek", response_model=PeekResponse)
+async def peek_limiter(
+    client_id: str = "demo-client", manager: LimiterManager = Depends(get_manager)
+) -> PeekResponse:
+    """Report remaining quota without consuming any. The dashboard polls this
+    to chart how quota recovers, which must not itself count as traffic."""
+    return PeekResponse(
+        remaining=await manager.peek(client_id),
+        limit=manager.config.capacity,
         algorithm=manager.config.algorithm,
     )
 

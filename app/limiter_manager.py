@@ -74,6 +74,10 @@ class LimiterManager:
         assert self._limiter is not None
         return await self._limiter.check(client_id)
 
+    async def peek(self, client_id: str) -> int:
+        assert self._limiter is not None
+        return await self._limiter.peek(client_id)
+
 
 _manager: LimiterManager | None = None
 

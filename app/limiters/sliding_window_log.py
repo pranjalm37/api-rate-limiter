@@ -39,3 +39,8 @@ class SlidingWindowLogLimiter(RateLimiter):
             remaining=remaining,
             retry_after=retry_after,
         )
+
+    async def peek(self, key: str) -> int:
+        storage_key = f"swl:{key}"
+        await self.store.zremrangebyscore(storage_key, 0, time.time() - self.window_seconds)
+        return max(self.capacity - await self.store.zcard(storage_key), 0)

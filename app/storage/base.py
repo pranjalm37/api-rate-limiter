@@ -45,5 +45,13 @@ class Store(ABC):
         """
 
     @abstractmethod
+    async def peek_tokens(self, key: str, capacity: float, refill_rate: float) -> float:
+        """Return a bucket's token count including refill owed, without writing.
+
+        Read-only counterpart to consume_token: the refill is a pure function
+        of elapsed time, so observability can sample it without side effects.
+        """
+
+    @abstractmethod
     async def reset(self, key_prefix: str = "") -> None:
         """Clear all state (used by tests / the GUI's reset button)."""

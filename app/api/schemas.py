@@ -31,3 +31,9 @@ class CheckResponse(BaseModel):
     remaining: int
     retry_after: float
     algorithm: Algorithm
+
+
+class PeekResponse(BaseModel):
+    remaining: int
+    limit: int
+    algorithm: Algorithm

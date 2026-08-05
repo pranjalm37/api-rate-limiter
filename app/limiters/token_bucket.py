@@ -37,3 +37,7 @@ class TokenBucketLimiter(RateLimiter):
             remaining=int(tokens_remaining),
             retry_after=retry_after,
         )
+
+    async def peek(self, key: str) -> int:
+        tokens = await self.store.peek_tokens(f"tb:{key}", float(self.capacity), self.refill_rate)
+        return int(tokens)

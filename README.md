@@ -5,7 +5,7 @@ classic algorithms behind a common interface, with a pluggable in-memory or
 Redis backend, and a live browser dashboard for demoing the behavior of each
 algorithm in real time.
 
-![status](https://img.shields.io/badge/tests-17%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-21%20passing-brightgreen)
 
 **[Live algorithm visualizer →](https://pranjalm37.github.io/api-rate-limiter/)**
 (runs the 4 algorithms client-side in your browser, no backend — see below)
@@ -76,6 +76,14 @@ logic (same math, same edge cases) — it's a visualizer, not a second
 implementation to keep in sync by hand for anything beyond the core `check()`
 logic.
 
+Both share one chart: available quota over the last 30 seconds, with a tick per
+request. Each algorithm leaves a distinct signature — the token bucket drains
+on a burst and refills on a linear ramp, fixed window cliff-resets at
+boundaries, the sliding windows recover gradually — which is the point the
+demo is trying to make. Allowed and rejected requests are distinguished by
+tick *direction* (up vs down) as well as colour, since green/red alone is not
+separable for red-green colour blindness.
+
 ## Running it locally
 
 ```bash
@@ -124,6 +132,7 @@ pytest tests/ -v
 |---|---|---|
 | `/api/config` | GET/POST | Read or change the active algorithm/backend/limits |
 | `/api/limiter/check` | POST | Consume one unit of quota for a `client_id` (used by the GUI) |
+| `/api/limiter/peek` | GET | Read remaining quota **without** consuming — lets the dashboard chart quota recovery without its own polling counting as traffic |
 | `/api/limiter/reset` | POST | Clear all rate-limit state |
 | `/api/demo/resource` | GET | A protected demo endpoint, rate limited by `X-Client-Id` header (or caller IP) |
 

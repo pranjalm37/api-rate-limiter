@@ -43,3 +43,13 @@ class SlidingWindowCounterLimiter(RateLimiter):
             remaining=remaining,
             retry_after=retry_after,
         )
+
+    async def peek(self, key: str) -> int:
+        now = time.time()
+        window_index = int(now // self.window_seconds)
+        elapsed_fraction = (now % self.window_seconds) / self.window_seconds
+
+        current = await self.store.get_counter(f"swc:{key}:{window_index}")
+        previous = await self.store.get_counter(f"swc:{key}:{window_index - 1}")
+        weighted = previous * (1 - elapsed_fraction) + current
+        return max(int(self.capacity - weighted), 0)

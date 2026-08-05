@@ -89,6 +89,13 @@ class RedisStore(Store):
         )
         return bool(int(allowed)), float(tokens)
 
+    async def peek_tokens(self, key: str, capacity: float, refill_rate: float) -> float:
+        tokens, last_ts = await self._client.hmget(key, "tokens", "last_ts")
+        if tokens is None:
+            return capacity
+        elapsed = max(time.time() - float(last_ts), 0.0)
+        return min(capacity, float(tokens) + elapsed * refill_rate)
+
     async def reset(self, key_prefix: str = "") -> None:
         pattern = f"{key_prefix}*" if key_prefix else "*"
         cursor = 0

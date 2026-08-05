@@ -76,6 +76,15 @@ class MemoryStore(Store):
             self._buckets[key] = (tokens, last_ts, now + ttl)
             return allowed, tokens
 
+    async def peek_tokens(self, key: str, capacity: float, refill_rate: float) -> float:
+        async with self._lock:
+            now = time.time()
+            entry = self._buckets.get(key)
+            if entry is None or now >= entry[2]:
+                return capacity
+            tokens, last_ts, _ = entry
+            return min(capacity, tokens + max(now - last_ts, 0.0) * refill_rate)
+
     async def reset(self, key_prefix: str = "") -> None:
         async with self._lock:
             self._counters = {k: v for k, v in self._counters.items() if not k.startswith(key_prefix)}
