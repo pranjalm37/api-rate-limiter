@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>API Rate Limiter — Live Demo</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <div>
+        <h1>API Rate Limiter</h1>
+        <p class="subtitle">Fixed window · Sliding window log · Sliding window counter · Token bucket</p>
+      </div>
+    </div>
+    <div class="status" id="connectionStatus">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">connecting…</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel config-panel">
+      <h2>Configuration</h2>
+
+      <label>Algorithm
+        <select id="algorithm">
+          <option value="token_bucket">Token Bucket</option>
+          <option value="fixed_window">Fixed Window</option>
+          <option value="sliding_window_log">Sliding Window Log</option>
+          <option value="sliding_window_counter">Sliding Window Counter</option>
+        </select>
+      </label>
+
+      <label>Storage backend
+        <select id="backend">
+          <option value="memory">In-memory</option>
+          <option value="redis">Redis</option>
+        </select>
+      </label>
+
+      <label>Capacity <span class="hint" id="capacityHint">(max requests / window)</span>
+        <input type="number" id="capacity" value="10" min="1" max="10000" />
+      </label>
+
+      <label id="windowRow">Window (seconds)
+        <input type="number" id="windowSeconds" value="10" min="0.5" max="3600" step="0.5" />
+      </label>
+
+      <label id="refillRow" class="hidden">Refill rate (tokens / second)
+        <input type="number" id="refillRate" value="1" min="0.1" max="1000" step="0.1" />
+      </label>
+
+      <label>Client ID
+        <input type="text" id="clientId" value="demo-client" maxlength="64" />
+      </label>
+
+      <div class="button-row">
+        <button id="applyConfig" class="primary">Apply configuration</button>
+        <button id="resetState" class="ghost">Reset state</button>
+      </div>
+      <p class="error" id="configError"></p>
+    </section>
+
+    <section class="panel traffic-panel">
+      <h2>Fire traffic</h2>
+
+      <div class="fire-controls">
+        <button id="fireOnce" class="primary">Fire 1 request</button>
+        <button id="fireBurst" class="ghost">Fire burst of 20</button>
+      </div>
+
+      <div class="auto-fire">
+        <label class="toggle">
+          <input type="checkbox" id="autoFireToggle" />
+          <span>Auto-fire</span>
+        </label>
+        <label class="rate-label">
+          rate: <span id="rateValue">5</span> req/s
+          <input type="range" id="fireRate" min="1" max="30" value="5" />
+        </label>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat">
+          <span class="stat-value" id="statTotal">0</span>
+          <span class="stat-label">total</span>
+        </div>
+        <div class="stat allowed">
+          <span class="stat-value" id="statAllowed">0</span>
+          <span class="stat-label">allowed</span>
+        </div>
+        <div class="stat blocked">
+          <span class="stat-value" id="statBlocked">0</span>
+          <span class="stat-label">blocked</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="statBlockRate">0%</span>
+          <span class="stat-label">block rate</span>
+        </div>
+      </div>
+
+      <div class="remaining-wrap">
+        <div class="remaining-label">
+          <span>remaining quota</span>
+          <span id="remainingText">-- / --</span>
+        </div>
+        <div class="remaining-bar"><div class="remaining-fill" id="remainingFill"></div></div>
+      </div>
+    </section>
+
+    <section class="panel chart-panel">
+      <h2>Live request timeline</h2>
+      <canvas id="chart" width="900" height="220"></canvas>
+      <div class="legend">
+        <span><i class="dot allowed"></i> allowed</span>
+        <span><i class="dot blocked"></i> blocked (429)</span>
+      </div>
+    </section>
+
+    <section class="panel curl-panel">
+      <h2>Try it from a real client</h2>
+      <p>Same endpoint the simulator above is hitting — copy this into a terminal:</p>
+      <pre id="curlSnippet">curl -H "X-Client-Id: demo-client" http://localhost:8000/api/demo/resource</pre>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
