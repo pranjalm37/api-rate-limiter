@@ -44,11 +44,12 @@ async def reset_limiter(manager: LimiterManager = Depends(get_manager)) -> dict:
 
 @router.post("/limiter/check", response_model=CheckResponse)
 async def check_limiter(
-    body: CheckRequest, manager: LimiterManager = Depends(get_manager)
+    body: CheckRequest, response: Response, manager: LimiterManager = Depends(get_manager)
 ) -> CheckResponse:
     """Used by the GUI's live traffic simulator: fires one real request
     through the currently configured limiter and reports the outcome."""
     result = await manager.check(body.client_id)
+    response.headers["X-RateLimit-Limit"] = str(result.limit)
     return CheckResponse(
         allowed=result.allowed,
         limit=result.limit,
