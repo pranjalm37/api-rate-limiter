@@ -50,6 +50,7 @@ async def check_limiter(
     through the currently configured limiter and reports the outcome."""
     result = await manager.check(body.client_id)
     response.headers["X-RateLimit-Limit"] = str(result.limit)
+    response.headers["X-RateLimit-Remaining"] = str(result.remaining)
     return CheckResponse(
         allowed=result.allowed,
         limit=result.limit,
