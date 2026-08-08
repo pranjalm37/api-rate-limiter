@@ -65,3 +65,51 @@ async def test_concurrent_requests_never_exceed_burst(gcra_store):
     )
     allowed_count = sum(1 for allowed, _ in results if allowed)
     assert allowed_count == 5
+
+
+@pytest.mark.asyncio
+async def test_peek_reports_full_burst_when_untouched(gcra_store):
+    remaining = await gcra_store.peek("user-1", period=1.0, burst=5)
+    assert remaining == 5
+
+
+@pytest.mark.asyncio
+async def test_peek_does_not_consume(gcra_store):
+    for _ in range(20):
+        await gcra_store.peek("user-1", period=1.0, burst=5)
+    # Heavy peeking must not have spent anything -- all 5 should still admit.
+    results = [
+        await gcra_store.check_and_update("user-1", period=1.0, burst=5, ttl=60) for _ in range(5)
+    ]
+    assert all(allowed for allowed, _ in results)
+
+
+@pytest.mark.asyncio
+async def test_peek_tracks_consumption(gcra_store):
+    await gcra_store.check_and_update("user-1", period=1.0, burst=5, ttl=60)
+    await gcra_store.check_and_update("user-1", period=1.0, burst=5, ttl=60)
+    remaining = await gcra_store.peek("user-1", period=1.0, burst=5)
+    # int(), not ==: real wall-clock time passes between the two calls above
+    # and this peek, so a sliver of legitimate refill can nudge the raw float
+    # just past 3 (e.g. 3.00003) -- GCRALimiter truncates the same way.
+    assert int(remaining) == 3
+
+
+@pytest.mark.asyncio
+async def test_peek_reflects_refill_over_time(gcra_store):
+    period = 0.05  # fast refill: one slot back every 50ms
+    for _ in range(5):
+        await gcra_store.check_and_update("user-1", period=period, burst=5, ttl=60)
+    assert int(await gcra_store.peek("user-1", period=period, burst=5)) == 0
+
+    await asyncio.sleep(0.12)  # ~2 slots' worth of time
+    remaining = await gcra_store.peek("user-1", period=period, burst=5)
+    assert 1 <= remaining <= 5
+
+
+@pytest.mark.asyncio
+async def test_peek_resets_to_full_after_ttl_expiry(gcra_store):
+    await gcra_store.check_and_update("user-1", period=1.0, burst=5, ttl=0.05)
+    await asyncio.sleep(0.1)  # let the key's ttl lapse
+    remaining = await gcra_store.peek("user-1", period=1.0, burst=5)
+    assert remaining == 5
