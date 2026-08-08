@@ -68,6 +68,37 @@ async def test_demo_resource_returns_429_with_headers_when_blocked(client):
 
 
 @pytest.mark.asyncio
+async def test_gcra_selectable_as_algorithm(client):
+    configure = await client.post(
+        "/api/config",
+        json={
+            "algorithm": "gcra",
+            "backend": "memory",
+            "capacity": 2,
+            "window_seconds": 5,
+            "refill_rate": 1,
+        },
+    )
+    assert configure.status_code == 200
+    assert configure.json()["algorithm"] == "gcra"
+
+    await client.post("/api/limiter/reset")
+
+    first = await client.post("/api/limiter/check", json={"client_id": "gcra-api-test"})
+    second = await client.post("/api/limiter/check", json={"client_id": "gcra-api-test"})
+    third = await client.post("/api/limiter/check", json={"client_id": "gcra-api-test"})
+
+    assert first.json()["allowed"] is True
+    assert second.json()["allowed"] is True
+    assert third.json()["allowed"] is False
+    assert third.json()["algorithm"] == "gcra"
+
+    peek = await client.get("/api/limiter/peek", params={"client_id": "gcra-api-test"})
+    assert peek.status_code == 200
+    assert peek.json()["algorithm"] == "gcra"
+
+
+@pytest.mark.asyncio
 async def test_configure_rejects_invalid_capacity(client):
     res = await client.post(
         "/api/config",

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-live-2a78d6.svg)](https://pranjalm37.github.io/api-rate-limiter/)
 
-Four rate limiting algorithms written without a rate limiting library, behind
+Five rate limiting algorithms written without a rate limiting library, behind
 one interface, with an in-memory or Redis backend. The demo page lets you fire
 traffic at each one and watch what it does.
 
@@ -18,9 +18,12 @@ traffic at each one and watch what it does.
 cheapest to run, but a burst landing either side of a boundary gets through at
 roughly twice the limit. A sliding window log is exact, at the cost of storing
 every timestamp. A sliding window counter approximates the log for O(1). A
-token bucket allows short bursts while still capping the long-run rate. On the
+token bucket allows short bursts while still capping the long-run rate. GCRA
+(the "leaky bucket") gets the same shape as a token bucket from a single
+timestamp per key instead of an explicit token count -- no background refill
+step, the math just falls out of comparing that timestamp to now. On the
 demo page each one leaves a different shape: fixed window cliff-resets at the
-boundary, a token bucket ramps back up as it refills.
+boundary, a token bucket (or GCRA) ramps back up as it refills.
 
 **Refill-then-consume is a race.** Two concurrent requests can both read the
 same token count and both get allowed. Each backend does it as one atomic step
@@ -60,14 +63,19 @@ dashboard, or set `RATE_LIMITER_BACKEND=redis`.
 
 ```
 app/
-  limiters/          the four algorithms, each with check() and peek()
+  limiters/          the five algorithms, each with check() and peek()
     fixed_window.py
     sliding_window_log.py
     sliding_window_counter.py
     token_bucket.py
+    gcra.py
   storage/           backends behind one Store interface
     memory.py        in-process, guarded by asyncio.Lock
     redis_store.py   Redis, with Lua scripts for the atomic operations
+    gcra_store.py    separate interface for GCRA (state is one timestamp,
+                      not a counter/sorted-set/token-count, per the Store methods)
+    gcra_memory.py   in-process GCRA, guarded by asyncio.Lock
+    gcra_redis.py    Redis-backed GCRA, atomic via a Lua script
   api/routes.py      /config, /limiter/check, /limiter/peek, /demo/resource
   limiter_manager.py the live configuration shared by the API and the UI
   main.py            FastAPI app, also serves the dashboard

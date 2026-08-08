@@ -26,7 +26,7 @@
 <main class="wrap">
 
   <section class="intro">
-    <h2>Four ways to say no.</h2>
+    <h2>Five ways to say no.</h2>
     <p>
       Every request on this page hits the running FastAPI service — the same endpoint a real
       client would call, backed by the in-memory or Redis store. Pick an algorithm, send traffic,
@@ -40,6 +40,7 @@
       <button type="button" role="tab" data-algo="fixed_window" aria-selected="false">Fixed window</button>
       <button type="button" role="tab" data-algo="sliding_window_log" aria-selected="false">Sliding window log</button>
       <button type="button" role="tab" data-algo="sliding_window_counter" aria-selected="false">Sliding window counter</button>
+      <button type="button" role="tab" data-algo="gcra" aria-selected="false">GCRA (leaky bucket)</button>
     </div>
   </div>
 

@@ -65,6 +65,17 @@ class RedisGCRAStore(GCRAStore):
         )
         return bool(int(allowed)), float(retry_after)
 
+    async def peek(self, key: str, period: float, burst: float) -> float:
+        tat_raw, expires_raw = await self._client.hmget(key, "tat", "expires_at")
+        if tat_raw is None:
+            return burst
+        now = time.time()
+        if expires_raw is not None and now >= float(expires_raw):
+            return burst
+        deficit = max(float(tat_raw) - now, 0.0)
+        remaining = burst - (deficit / period if period > 0 else 0.0)
+        return max(0.0, min(burst, remaining))
+
     async def reset(self, key_prefix: str = "") -> None:
         pattern = f"{key_prefix}*" if key_prefix else "*"
         cursor = 0

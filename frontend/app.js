@@ -45,7 +45,7 @@ function clientId() {
 /* ------------------------------------------------------------- config */
 
 function syncAlgorithmUI() {
-  const isBucket = state.algorithm === "token_bucket";
+  const isBucket = state.algorithm === "token_bucket" || state.algorithm === "gcra";
   document.querySelectorAll(".segmented button").forEach((b) => {
     b.setAttribute("aria-selected", String(b.dataset.algo === state.algorithm));
   });

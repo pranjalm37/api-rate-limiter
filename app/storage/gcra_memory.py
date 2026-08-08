@@ -31,6 +31,16 @@ class MemoryGCRAStore(GCRAStore):
             self._tat[key] = (tat, now + ttl)
             return False, retry_after
 
+    async def peek(self, key: str, period: float, burst: float) -> float:
+        async with self._lock:
+            now = time.time()
+            tat, expires_at = self._tat.get(key, (0.0, 0.0))
+            if now >= expires_at:
+                return burst
+            deficit = max(tat - now, 0.0)
+            remaining = burst - (deficit / period if period > 0 else 0.0)
+            return max(0.0, min(burst, remaining))
+
     async def reset(self, key_prefix: str = "") -> None:
         async with self._lock:
             self._tat = {k: v for k, v in self._tat.items() if not k.startswith(key_prefix)}
