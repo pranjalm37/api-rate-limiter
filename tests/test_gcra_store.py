@@ -57,8 +57,11 @@ async def test_independent_keys_do_not_share_state(gcra_store):
 
 @pytest.mark.asyncio
 async def test_concurrent_requests_never_exceed_burst(gcra_store):
+    # period is deliberately large so no legitimate time-based refill can
+    # happen within the test's runtime -- any count above burst would have
+    # to come from a race, not real elapsed time.
     results = await asyncio.gather(
-        *[gcra_store.check_and_update("user-1", period=0.001, burst=5, ttl=60) for _ in range(50)]
+        *[gcra_store.check_and_update("user-1", period=10.0, burst=5, ttl=60) for _ in range(50)]
     )
     allowed_count = sum(1 for allowed, _ in results if allowed)
     assert allowed_count == 5

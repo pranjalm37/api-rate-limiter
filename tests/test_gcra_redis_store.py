@@ -70,18 +70,30 @@ async def test_independent_keys_do_not_share_state(gcra_store):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_requests_can_oversell_because_this_version_is_not_atomic(gcra_store):
-    """Documents the known race this implementation has, rather than hiding
-    it. Many concurrent requests race the read-then-write, so more than
-    `burst` requests can get admitted. The atomic Lua-script version (a
-    follow-up change) closes this; until then, this test pins the current
-    (racy) behavior instead of asserting a guarantee that doesn't hold yet.
+async def test_concurrent_requests_never_exceed_burst(gcra_store):
+    """The check-and-update Lua script makes the read-then-write atomic on
+    Redis's side, so concurrent requests can no longer race each other into
+    an oversold burst -- this used to fail before the Lua script existed.
+
+    `period` is deliberately large (no legitimate time-based refill can
+    happen within the test's runtime), so any count above `burst` could
+    only come from a race, not real elapsed time.
     """
     key = _key()
     results = await asyncio.gather(
-        *[gcra_store.check_and_update(key, period=0.001, burst=5, ttl=60) for _ in range(50)]
+        *[gcra_store.check_and_update(key, period=10.0, burst=5, ttl=60) for _ in range(50)]
     )
     allowed_count = sum(1 for allowed, _ in results if allowed)
-    # Not atomic yet: allowed_count is >= burst under concurrency, unlike
-    # MemoryGCRAStore (which locks) or the future atomic Redis version.
-    assert allowed_count >= 5
+    assert allowed_count == 5
+
+
+@pytest.mark.asyncio
+async def test_rejection_does_not_advance_state(gcra_store):
+    """A rejected request must not push the TAT further out, otherwise a
+    burst of rejected requests would keep extending the required wait."""
+    key = _key()
+    await gcra_store.check_and_update(key, period=1.0, burst=1, ttl=60)
+    _, retry_after_1 = await gcra_store.check_and_update(key, period=1.0, burst=1, ttl=60)
+    await asyncio.sleep(0.05)
+    _, retry_after_2 = await gcra_store.check_and_update(key, period=1.0, burst=1, ttl=60)
+    assert retry_after_2 < retry_after_1
