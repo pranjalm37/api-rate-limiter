@@ -31,11 +31,18 @@ class TokenBucketLimiter(RateLimiter):
             missing = 1.0 - tokens_remaining
             retry_after = missing / self.refill_rate if self.refill_rate > 0 else float("inf")
 
+        # Distinct from retry_after: retry_after is "when can I send one more
+        # request" (needs 1 token), reset_after is "when is the bucket back
+        # to full capacity" (needs capacity - tokens_remaining tokens).
+        deficit = self.capacity - tokens_remaining
+        reset_after = deficit / self.refill_rate if self.refill_rate > 0 else float("inf")
+
         return RateLimitResult(
             allowed=allowed,
             limit=self.capacity,
             remaining=int(tokens_remaining),
             retry_after=retry_after,
+            reset_after=reset_after,
         )
 
     async def peek(self, key: str) -> int:
