@@ -8,6 +8,10 @@ class RateLimitResult:
     limit: int
     remaining: int
     retry_after: float  # seconds until the caller should retry, 0 if allowed
+    # Seconds until quota is back to full ("the window/bucket resets").
+    # Defaults to 0.0 -- each limiter fills this in with real per-algorithm
+    # logic in a follow-up change; until then it's just present on the type.
+    reset_after: float = 0.0
 
 
 class RateLimiter(ABC):
