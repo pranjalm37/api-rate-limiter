@@ -93,6 +93,13 @@ class MemoryStore(Store):
             )
             self._buckets = {k: v for k, v in self._buckets.items() if not k.startswith(key_prefix)}
 
+    async def oldest_score(self, key: str) -> float | None:
+        async with self._lock:
+            members = self._sorted_sets.get(key)
+            if not members:
+                return None
+            return min(members.values())
+
     async def ttl(self, key: str) -> float:
         async with self._lock:
             _, expires_at = self._counters.get(key, (0, 0.0))

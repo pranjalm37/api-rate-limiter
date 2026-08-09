@@ -57,6 +57,15 @@ class Store(ABC):
         """Clear all state (used by tests / the GUI's reset button)."""
 
     @abstractmethod
+    async def oldest_score(self, key: str) -> float | None:
+        """The lowest score currently in the sorted set at `key` (None if empty).
+
+        Used by sliding_window_log to report reset_after: a sliding window
+        has no single boundary, so "reset" means when the oldest logged
+        request ages out of the window and frees a slot.
+        """
+
+    @abstractmethod
     async def ttl(self, key: str) -> float:
         """Seconds remaining before `key`'s state expires (0 if absent/expired).
 

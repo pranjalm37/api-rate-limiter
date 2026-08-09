@@ -106,6 +106,12 @@ class RedisStore(Store):
             if cursor == 0:
                 break
 
+    async def oldest_score(self, key: str) -> float | None:
+        result = await self._client.zrange(key, 0, 0, withscores=True)
+        if not result:
+            return None
+        return float(result[0][1])
+
     async def ttl(self, key: str) -> float:
         ttl_ms = await self._client.pttl(key)
         # redis-py returns -2 (no such key) or -1 (no TTL set) for absent state.

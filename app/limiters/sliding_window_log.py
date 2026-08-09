@@ -32,12 +32,17 @@ class SlidingWindowLogLimiter(RateLimiter):
             current += 1
 
         remaining = max(self.capacity - current, 0)
-        retry_after = 0.0 if allowed else self.window_seconds
+
+        oldest = await self.store.oldest_score(storage_key)
+        reset_after = max(oldest + self.window_seconds - now, 0.0) if oldest is not None else 0.0
+        retry_after = 0.0 if allowed else reset_after
+
         return RateLimitResult(
             allowed=allowed,
             limit=self.capacity,
             remaining=remaining,
             retry_after=retry_after,
+            reset_after=reset_after,
         )
 
     async def peek(self, key: str) -> int:
