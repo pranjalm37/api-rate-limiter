@@ -55,3 +55,12 @@ class Store(ABC):
     @abstractmethod
     async def reset(self, key_prefix: str = "") -> None:
         """Clear all state (used by tests / the GUI's reset button)."""
+
+    @abstractmethod
+    async def ttl(self, key: str) -> float:
+        """Seconds remaining before `key`'s state expires (0 if absent/expired).
+
+        Used by fixed_window to report reset_after: how long until this
+        window's counter clears, without the limiter needing to track
+        window-start timestamps itself.
+        """

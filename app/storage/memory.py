@@ -92,3 +92,8 @@ class MemoryStore(Store):
                 dict, {k: v for k, v in self._sorted_sets.items() if not k.startswith(key_prefix)}
             )
             self._buckets = {k: v for k, v in self._buckets.items() if not k.startswith(key_prefix)}
+
+    async def ttl(self, key: str) -> float:
+        async with self._lock:
+            _, expires_at = self._counters.get(key, (0, 0.0))
+            return max(expires_at - time.time(), 0.0)

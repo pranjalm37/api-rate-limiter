@@ -20,12 +20,14 @@ class FixedWindowLimiter(RateLimiter):
         count = await self.store.incr_and_get(storage_key, self.window_seconds)
         allowed = count <= self.capacity
         remaining = max(self.capacity - count, 0)
-        retry_after = 0.0 if allowed else self.window_seconds
+        reset_after = await self.store.ttl(storage_key)
+        retry_after = 0.0 if allowed else reset_after
         return RateLimitResult(
             allowed=allowed,
             limit=self.capacity,
             remaining=remaining,
             retry_after=retry_after,
+            reset_after=reset_after,
         )
 
     async def peek(self, key: str) -> int:

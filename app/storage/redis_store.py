@@ -106,5 +106,10 @@ class RedisStore(Store):
             if cursor == 0:
                 break
 
+    async def ttl(self, key: str) -> float:
+        ttl_ms = await self._client.pttl(key)
+        # redis-py returns -2 (no such key) or -1 (no TTL set) for absent state.
+        return max(ttl_ms, 0) / 1000.0
+
     async def close(self) -> None:
         await self._client.aclose()
