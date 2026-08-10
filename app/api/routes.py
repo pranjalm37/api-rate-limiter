@@ -87,6 +87,7 @@ async def demo_resource(
 
     response.headers["X-RateLimit-Limit"] = str(result.limit)
     response.headers["X-RateLimit-Remaining"] = str(result.remaining)
+    response.headers["X-RateLimit-Reset"] = str(round(result.reset_after, 2))
     if not result.allowed:
         raise HTTPException(
             status_code=429,
