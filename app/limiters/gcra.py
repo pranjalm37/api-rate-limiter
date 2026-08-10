@@ -32,11 +32,18 @@ class GCRALimiter(RateLimiter):
         )
         remaining = await self.store.peek(storage_key, self.period, float(self.capacity))
 
+        # Same split as token_bucket: retry_after is "when can I send one
+        # more request" (already computed above), reset_after is "when is
+        # the burst back to full capacity" -- a distinct, larger value.
+        deficit = self.capacity - remaining
+        reset_after = deficit * self.period if self.refill_rate > 0 else float("inf")
+
         return RateLimitResult(
             allowed=allowed,
             limit=self.capacity,
             remaining=int(remaining),
             retry_after=retry_after,
+            reset_after=reset_after,
         )
 
     async def peek(self, key: str) -> int:
