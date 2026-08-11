@@ -42,3 +42,42 @@ async def test_concurrent_requests_never_oversell_tokens(store):
     results = await asyncio.gather(*[limiter.check("user-1") for _ in range(50)])
     allowed_count = sum(r.allowed for r in results)
     assert allowed_count == 5
+
+
+@pytest.mark.asyncio
+async def test_reset_after_positive_even_when_allowed(store):
+    """retry_after is 0 once a request is allowed, but reset_after (time
+    until the bucket is back to FULL capacity) should still be positive --
+    they answer different questions, unlike the window algorithms."""
+    limiter = TokenBucketLimiter(store, capacity=5, refill_rate=1)
+    result = await limiter.check("user-1")
+    assert result.allowed
+    assert result.retry_after == 0.0
+    assert result.reset_after > 0.0
+
+
+@pytest.mark.asyncio
+async def test_reset_after_exceeds_retry_after_when_blocked(store):
+    limiter = TokenBucketLimiter(store, capacity=5, refill_rate=1)
+    for _ in range(5):
+        await limiter.check("user-1")
+    blocked = await limiter.check("user-1")
+    assert not blocked.allowed
+    assert blocked.reset_after > blocked.retry_after > 0.0
+
+
+@pytest.mark.asyncio
+async def test_reset_after_decreases_as_bucket_refills(store):
+    limiter = TokenBucketLimiter(store, capacity=3, refill_rate=10)  # capacity/rate = 0.3s to full
+    for _ in range(3):
+        await limiter.check("user-1")
+    empty = await limiter.check("user-1")
+    assert not empty.allowed
+
+    # Sleeping >= capacity/refill_rate guarantees the bucket refills to (at
+    # least) full before this check consumes one token from it, regardless
+    # of scheduler jitter -- so reset_after here is bounded by 1/refill_rate,
+    # well under empty's capacity/refill_rate.
+    await asyncio.sleep(0.31)
+    refilled = await limiter.check("user-1")
+    assert refilled.reset_after < empty.reset_after
