@@ -63,8 +63,37 @@ async def test_demo_resource_returns_429_with_headers_when_blocked(client):
     second = await client.get("/api/demo/resource", headers=headers)
 
     assert first.status_code == 200
+    assert first.headers["X-RateLimit-Limit"] == "1"
+    assert first.headers["X-RateLimit-Remaining"] == "0"
+    assert float(first.headers["X-RateLimit-Reset"]) > 0
+
     assert second.status_code == 429
     assert "Retry-After" in second.headers
+    assert second.headers["X-RateLimit-Limit"] == "1"
+    assert second.headers["X-RateLimit-Remaining"] == "0"
+    assert float(second.headers["X-RateLimit-Reset"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_demo_resource_remaining_header_decrements_across_allowed_requests(client):
+    await client.post(
+        "/api/config",
+        json={
+            "algorithm": "fixed_window",
+            "backend": "memory",
+            "capacity": 3,
+            "window_seconds": 5,
+            "refill_rate": 1,
+        },
+    )
+    await client.post("/api/limiter/reset")
+
+    headers = {"X-Client-Id": "demo-resource-remaining-test"}
+    responses = [await client.get("/api/demo/resource", headers=headers) for _ in range(3)]
+
+    assert [r.status_code for r in responses] == [200, 200, 200]
+    assert [r.headers["X-RateLimit-Remaining"] for r in responses] == ["2", "1", "0"]
+    assert all(r.headers["X-RateLimit-Limit"] == "3" for r in responses)
 
 
 @pytest.mark.asyncio
