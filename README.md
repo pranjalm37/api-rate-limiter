@@ -106,6 +106,7 @@ client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
 | Sliding window log | Exact | O(requests in window) | Correct, but stores every timestamp |
 | Sliding window counter | Approximate | O(1) | Weights two adjacent windows |
 | Token bucket | Exact, burst-friendly | O(1) | What AWS API Gateway and Stripe use |
+| GCRA (leaky bucket) | Exact, burst-friendly | O(1) | Same shape as token bucket, one timestamp instead of a token count |
 
 ## API
 
