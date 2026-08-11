@@ -117,9 +117,14 @@ client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
 | `/api/limiter/reset` | POST | Clear all limiter state |
 | `/api/config` | GET/POST | Read or change the algorithm, backend, and limits |
 
-When it rejects, `demo/resource` returns 429 with `Retry-After`,
-`X-RateLimit-Limit` and `X-RateLimit-Remaining`, the same shape a real gateway
-would send:
+Every response from `demo/resource` and `limiter/check` -- allowed or not --
+carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`,
+the same shape a real gateway would send. `X-RateLimit-Reset` means something
+different per algorithm: for the window algorithms it's when the window (or
+the oldest logged request) clears; for token bucket and GCRA it's when the
+bucket is back to *full* capacity, which is a distinct, larger number than
+`Retry-After` (the time until just one more request is allowed). A 429 also
+adds `Retry-After`:
 
 ```bash
 curl -i -H "X-Client-Id: demo" http://localhost:8000/api/demo/resource
@@ -152,11 +157,12 @@ python scripts/screenshot.py
 pytest tests/ -v
 ```
 
-21 tests, no network or external services needed. They cover each algorithm's
-limit and recovery behaviour, the concurrency guarantee, `peek()` not
-consuming quota, and the API surface including 429 headers and validation. CI
-runs them on every push, then builds the Docker image and checks the container
-comes up healthy.
+61 tests, no network or external services needed (a handful skip cleanly if
+Redis isn't running locally). They cover each algorithm's limit and recovery
+behaviour, the concurrency guarantee, `peek()` not consuming quota, per-algorithm
+`reset_after` correctness, and the API surface including rate-limit headers,
+429s, and validation. CI runs them on every push, then builds the Docker image
+and checks the container comes up healthy.
 
 ## Next
 
