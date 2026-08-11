@@ -96,6 +96,7 @@ async def demo_resource(
                 "Retry-After": str(round(result.retry_after, 2)),
                 "X-RateLimit-Limit": str(result.limit),
                 "X-RateLimit-Remaining": str(result.remaining),
+                "X-RateLimit-Reset": str(round(result.reset_after, 2)),
             },
         )
 
