@@ -36,3 +36,24 @@ async def test_smooths_across_window_boundary(store):
     # burst must not get through.
     allowed_count = sum([(await limiter.check("user-1")).allowed for _ in range(4)])
     assert allowed_count < 4
+
+
+@pytest.mark.asyncio
+async def test_reset_after_within_window_bounds(store):
+    limiter = SlidingWindowCounterLimiter(store, capacity=5, window_seconds=0.3)
+    result = await limiter.check("user-1")
+    assert 0 < result.reset_after <= 0.3
+
+
+@pytest.mark.asyncio
+async def test_reset_after_decreases_within_the_same_window(store):
+    window = 0.3
+    limiter = SlidingWindowCounterLimiter(store, capacity=5, window_seconds=window)
+    # Align to just after a boundary so both checks land in the same window
+    # (otherwise which window each check falls in is wall-clock luck).
+    await asyncio.sleep(window - (time.time() % window) + 0.01)
+
+    first = await limiter.check("user-1")
+    await asyncio.sleep(0.05)
+    second = await limiter.check("user-1")
+    assert second.reset_after < first.reset_after
