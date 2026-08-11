@@ -43,6 +43,13 @@ async def test_configure_and_check_flow(client):
     assert second.json()["allowed"] is True
     assert third.json()["allowed"] is False
 
+    # /limiter/check always returns 200 (blocked is reported in the JSON
+    # body, not a 429), but the same X-RateLimit-* headers should still be
+    # set correctly on every response, allowed or not.
+    assert [r.headers["X-RateLimit-Limit"] for r in (first, second, third)] == ["2", "2", "2"]
+    assert [r.headers["X-RateLimit-Remaining"] for r in (first, second, third)] == ["1", "0", "0"]
+    assert all(float(r.headers["X-RateLimit-Reset"]) > 0 for r in (first, second, third))
+
 
 @pytest.mark.asyncio
 async def test_demo_resource_returns_429_with_headers_when_blocked(client):
