@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.config import get_settings
 from app.limiters import Algorithm, RateLimiter, RateLimitResult, build_limiter
+from app.route_limits import RouteLimitOverride
 from app.storage.base import Store
 from app.storage.gcra_memory import MemoryGCRAStore
 from app.storage.gcra_store import GCRAStore
@@ -37,6 +38,16 @@ class LimiterManager:
         )
         self._limiter: RateLimiter | None = None
         self._rebuild()
+        # Live, settable per-route overrides -- seeded from Settings but
+        # editable at runtime via the API, unlike Settings itself. Not
+        # enforced by check()/peek() yet; that's a follow-up change.
+        self.route_limits: dict[str, RouteLimitOverride] = dict(settings.route_limits)
+
+    def set_route_limit(self, path: str, override: RouteLimitOverride) -> None:
+        self.route_limits[path] = override
+
+    def clear_route_limit(self, path: str) -> None:
+        self.route_limits.pop(path, None)
 
     def _store_for(self, algorithm: Algorithm, backend: str) -> Store | GCRAStore:
         if algorithm == Algorithm.GCRA:
