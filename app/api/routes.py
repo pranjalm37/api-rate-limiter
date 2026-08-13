@@ -6,8 +6,12 @@ from app.api.schemas import (
     ConfigResponse,
     ConfigureRequest,
     PeekResponse,
+    RouteLimitClearRequest,
+    RouteLimitRequest,
+    RouteLimitResponse,
 )
 from app.limiter_manager import LimiterManager, get_manager
+from app.route_limits import RouteLimitOverride
 
 router = APIRouter()
 
@@ -40,6 +44,39 @@ async def set_config(
 async def reset_limiter(manager: LimiterManager = Depends(get_manager)) -> dict:
     await manager.reset()
     return {"status": "reset"}
+
+
+@router.get("/config/routes", response_model=dict[str, RouteLimitResponse])
+async def list_route_limits(
+    manager: LimiterManager = Depends(get_manager),
+) -> dict[str, RouteLimitResponse]:
+    """Storage only right now -- nothing in check()/peek() enforces these yet."""
+    return {
+        path: RouteLimitResponse(path=path, **override.__dict__)
+        for path, override in manager.route_limits.items()
+    }
+
+
+@router.post("/config/routes", response_model=RouteLimitResponse)
+async def set_route_limit(
+    body: RouteLimitRequest, manager: LimiterManager = Depends(get_manager)
+) -> RouteLimitResponse:
+    override = RouteLimitOverride(
+        algorithm=body.algorithm,
+        capacity=body.capacity,
+        window_seconds=body.window_seconds,
+        refill_rate=body.refill_rate,
+    )
+    manager.set_route_limit(body.path, override)
+    return RouteLimitResponse(path=body.path, **override.__dict__)
+
+
+@router.post("/config/routes/clear")
+async def clear_route_limit(
+    body: RouteLimitClearRequest, manager: LimiterManager = Depends(get_manager)
+) -> dict:
+    manager.clear_route_limit(body.path)
+    return {"status": "cleared", "path": body.path}
 
 
 @router.post("/limiter/check", response_model=CheckResponse)
