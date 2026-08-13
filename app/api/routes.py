@@ -121,7 +121,7 @@ async def demo_resource(
     """A real protected endpoint. Rate limited by X-Client-Id header (falls
     back to the caller's IP), exactly how you'd gate a production API."""
     client_id = x_client_id or (request.client.host if request.client else "unknown")
-    result = await manager.check(client_id)
+    result = await manager.check(client_id, route=request.url.path)
 
     response.headers["X-RateLimit-Limit"] = str(result.limit)
     response.headers["X-RateLimit-Remaining"] = str(result.remaining)
