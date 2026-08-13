@@ -89,15 +89,18 @@ class LimiterManager:
         """Picks the limiter to use, and a key prefix to keep its storage
         state isolated from the global keyspace and from other routes.
 
-        Only `capacity` is wired up so far -- window_seconds/refill_rate
-        overrides are a follow-up change, and algorithm overrides are an
-        open decision (see route_limits.py)."""
+        capacity/window_seconds/refill_rate are all wired up -- a route can
+        override any subset of them and inherit the rest from the global
+        config. `algorithm` overrides are still an open decision (see
+        route_limits.py), so that field is read but not yet honored here."""
         assert self._limiter is not None
         if route is None:
             return self._limiter, ""
 
         override = self.route_limits.get(route)
-        if override is None or override.capacity is None:
+        if override is None:
+            return self._limiter, ""
+        if override.capacity is None and override.window_seconds is None and override.refill_rate is None:
             return self._limiter, ""
 
         if route not in self._route_limiters:
@@ -105,9 +108,11 @@ class LimiterManager:
             self._route_limiters[route] = build_limiter(
                 self.config.algorithm,
                 store,
-                override.capacity,
-                self.config.window_seconds,
-                self.config.refill_rate,
+                override.capacity if override.capacity is not None else self.config.capacity,
+                override.window_seconds
+                if override.window_seconds is not None
+                else self.config.window_seconds,
+                override.refill_rate if override.refill_rate is not None else self.config.refill_rate,
             )
         return self._route_limiters[route], f"route:{route}:"
 
