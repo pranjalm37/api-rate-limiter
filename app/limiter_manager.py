@@ -91,8 +91,8 @@ class LimiterManager:
 
         capacity/window_seconds/refill_rate are all wired up -- a route can
         override any subset of them and inherit the rest from the global
-        config. `algorithm` overrides are still an open decision (see
-        route_limits.py), so that field is read but not yet honored here."""
+        config. Routes always use the global algorithm; see route_limits.py
+        for why per-route algorithm overrides were decided against."""
         assert self._limiter is not None
         if route is None:
             return self._limiter, ""

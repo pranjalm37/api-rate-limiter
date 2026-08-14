@@ -62,7 +62,6 @@ async def set_route_limit(
     body: RouteLimitRequest, manager: LimiterManager = Depends(get_manager)
 ) -> RouteLimitResponse:
     override = RouteLimitOverride(
-        algorithm=body.algorithm,
         capacity=body.capacity,
         window_seconds=body.window_seconds,
         refill_rate=body.refill_rate,

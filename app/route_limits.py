@@ -1,23 +1,21 @@
 from dataclasses import dataclass
 
-from app.limiters import Algorithm
-
 
 @dataclass
 class RouteLimitOverride:
-    """Per-route override of the global limiter configuration.
+    """Per-route override of the global limiter configuration's numbers.
 
     All fields are optional -- a route can override just one knob (e.g.
-    capacity) and inherit the rest from the global LimiterConfig. Whether
-    `algorithm` overrides get honored is still an open decision (a route
-    running a different algorithm than the global one is a bigger change
-    than overriding numbers); it's included here so this shape doesn't
-    need to change later if the answer turns out to be yes.
+    capacity) and inherit the rest from the global LimiterConfig.
 
-    Not wired into anything yet -- this is just the data shape.
+    Deliberately numbers-only: a route cannot override the algorithm, only
+    capacity/window_seconds/refill_rate. Decided against per-route algorithm
+    overrides -- it would mean picking the right Store type per algorithm in
+    the route-limiter cache too (GCRA needs a GCRAStore, others need a
+    Store), for a use case ("this one endpoint needs a different limiting
+    strategy entirely") that's rare enough not to be worth that complexity.
     """
 
-    algorithm: Algorithm | None = None
     capacity: int | None = None
     window_seconds: float | None = None
     refill_rate: float | None = None

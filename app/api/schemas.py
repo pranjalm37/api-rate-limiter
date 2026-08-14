@@ -41,11 +41,14 @@ class PeekResponse(BaseModel):
 
 class RouteLimitRequest(BaseModel):
     """All override fields are optional -- a route can override just one
-    knob and inherit the rest from the global config. Storage only for now;
-    nothing enforces these yet."""
+    knob and inherit the rest from the global config. Numbers only: a route
+    cannot override the algorithm, just capacity/window_seconds/refill_rate.
+    extra="forbid" so sending `algorithm` here fails loudly (422) instead of
+    silently being ignored, which would look like it worked but didn't."""
+
+    model_config = ConfigDict(extra="forbid")
 
     path: str = Field(min_length=1, max_length=256)
-    algorithm: Algorithm | None = None
     capacity: int | None = Field(default=None, gt=0, le=10_000)
     window_seconds: float | None = Field(default=None, gt=0, le=3600)
     refill_rate: float | None = Field(default=None, gt=0, le=1000)
@@ -53,7 +56,6 @@ class RouteLimitRequest(BaseModel):
 
 class RouteLimitResponse(BaseModel):
     path: str
-    algorithm: Algorithm | None
     capacity: int | None
     window_seconds: float | None
     refill_rate: float | None
