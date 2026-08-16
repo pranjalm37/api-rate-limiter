@@ -36,3 +36,53 @@ async def test_two_routes_with_different_capacities_are_independent(client):
         for _ in range(5)
     ]
     assert all(r.json()["allowed"] for r in check_results)
+
+
+@pytest.mark.asyncio
+async def test_route_with_no_override_uses_global_config(client):
+    await client.post(
+        "/api/config",
+        json={
+            "algorithm": "fixed_window",
+            "backend": "memory",
+            "capacity": 3,
+            "window_seconds": 5,
+            "refill_rate": 1,
+        },
+    )
+    await client.post("/api/limiter/reset")
+    await client.post("/api/config/routes/clear", json={"path": "/api/demo/resource"})
+
+    headers = {"X-Client-Id": "no-override-test"}
+    results = [await client.get("/api/demo/resource", headers=headers) for _ in range(4)]
+
+    # No override exists, so this should behave exactly like the global
+    # config: capacity 3 allowed, the 4th blocked.
+    assert [r.status_code for r in results] == [200, 200, 200, 429]
+    assert all(r.headers["X-RateLimit-Limit"] == "3" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_override_on_a_different_route_does_not_affect_this_one(client):
+    await client.post(
+        "/api/config",
+        json={
+            "algorithm": "fixed_window",
+            "backend": "memory",
+            "capacity": 3,
+            "window_seconds": 5,
+            "refill_rate": 1,
+        },
+    )
+    await client.post("/api/limiter/reset")
+
+    # An override exists in route_limits, but for a path nobody is calling --
+    # /api/demo/resource must still fall back to the global config, not get
+    # caught by some accidental "any override present" logic.
+    await client.post("/api/config/routes", json={"path": "/api/some/other/route", "capacity": 1})
+
+    headers = {"X-Client-Id": "unrelated-override-test"}
+    results = [await client.get("/api/demo/resource", headers=headers) for _ in range(3)]
+
+    assert [r.status_code for r in results] == [200, 200, 200]
+    assert all(r.headers["X-RateLimit-Limit"] == "3" for r in results)
