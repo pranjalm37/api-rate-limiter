@@ -86,3 +86,36 @@ async def test_override_on_a_different_route_does_not_affect_this_one(client):
 
     assert [r.status_code for r in results] == [200, 200, 200]
     assert all(r.headers["X-RateLimit-Limit"] == "3" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_updating_a_route_override_takes_effect_without_a_full_reset(client):
+    """Exercises the cache invalidation in LimiterManager.set_route_limit():
+    without it, the previously-built (capacity=2) limiter would keep being
+    reused, and this request would stay blocked forever."""
+    await client.post(
+        "/api/config",
+        json={
+            "algorithm": "fixed_window",
+            "backend": "memory",
+            "capacity": 20,
+            "window_seconds": 5,
+            "refill_rate": 1,
+        },
+    )
+    await client.post("/api/limiter/reset")
+    await client.post("/api/config/routes", json={"path": "/api/demo/resource", "capacity": 2})
+
+    headers = {"X-Client-Id": "live-update-test"}
+    first = await client.get("/api/demo/resource", headers=headers)
+    second = await client.get("/api/demo/resource", headers=headers)
+    blocked = await client.get("/api/demo/resource", headers=headers)
+    assert [first.status_code, second.status_code, blocked.status_code] == [200, 200, 429]
+
+    # Raise the override's capacity -- deliberately no /limiter/reset call
+    # in between, since the point is this takes effect on its own.
+    await client.post("/api/config/routes", json={"path": "/api/demo/resource", "capacity": 10})
+
+    after_update = await client.get("/api/demo/resource", headers=headers)
+    assert after_update.status_code == 200
+    assert after_update.headers["X-RateLimit-Limit"] == "10"
