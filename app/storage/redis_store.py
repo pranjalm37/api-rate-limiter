@@ -50,6 +50,29 @@ redis.call('PEXPIRE', KEYS[1], ttl_ms)
 return {allowed, tostring(tokens)}
 """
 
+# Atomic trim-count-conditionally-add for sliding_window_log: without this,
+# ZREMRANGEBYSCORE / ZCARD / ZADD as three separate round trips let
+# concurrent requests all read the same (under-capacity) count before any
+# of them writes back, oversell the window -- confirmed empirically: 50
+# concurrent requests at capacity=5 let 16 through with the old approach.
+# ARGV: window_start, capacity, now, member, ttl_ms
+# Not registered/called anywhere yet -- that's a follow-up change.
+_LOG_TRIM_AND_ADD_IF_UNDER_CAPACITY = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
+local count = redis.call('ZCARD', KEYS[1])
+local capacity = tonumber(ARGV[2])
+
+local allowed = 0
+if count < capacity then
+    redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
+    redis.call('PEXPIRE', KEYS[1], ARGV[5])
+    count = count + 1
+    allowed = 1
+end
+
+return {allowed, count}
+"""
+
 
 class RedisStore(Store):
     """Redis-backed store — shared state across multiple app instances/processes."""
