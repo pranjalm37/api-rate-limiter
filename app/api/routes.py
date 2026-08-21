@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 
+from app.api.apikey import extract_api_key
 from app.api.schemas import (
     CheckRequest,
     CheckResponse,
@@ -11,9 +12,27 @@ from app.api.schemas import (
     RouteLimitResponse,
 )
 from app.limiter_manager import LimiterManager, get_manager
+from app.limiters import RateLimitResult
 from app.route_limits import RouteLimitOverride
 
 router = APIRouter()
+
+
+def _apply_headers_and_raise_if_blocked(response: Response, result: RateLimitResult) -> None:
+    response.headers["X-RateLimit-Limit"] = str(result.limit)
+    response.headers["X-RateLimit-Remaining"] = str(result.remaining)
+    response.headers["X-RateLimit-Reset"] = str(round(result.reset_after, 2))
+    if not result.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={
+                "Retry-After": str(round(result.retry_after, 2)),
+                "X-RateLimit-Limit": str(result.limit),
+                "X-RateLimit-Remaining": str(result.remaining),
+                "X-RateLimit-Reset": str(round(result.reset_after, 2)),
+            },
+        )
 
 
 @router.get("/health")
@@ -121,20 +140,26 @@ async def demo_resource(
     back to the caller's IP), exactly how you'd gate a production API."""
     client_id = x_client_id or (request.client.host if request.client else "unknown")
     result = await manager.check(client_id, route=request.url.path)
-
-    response.headers["X-RateLimit-Limit"] = str(result.limit)
-    response.headers["X-RateLimit-Remaining"] = str(result.remaining)
-    response.headers["X-RateLimit-Reset"] = str(round(result.reset_after, 2))
-    if not result.allowed:
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded",
-            headers={
-                "Retry-After": str(round(result.retry_after, 2)),
-                "X-RateLimit-Limit": str(result.limit),
-                "X-RateLimit-Remaining": str(result.remaining),
-                "X-RateLimit-Reset": str(round(result.reset_after, 2)),
-            },
-        )
+    _apply_headers_and_raise_if_blocked(response, result)
 
     return {"message": "here is your data", "client_id": client_id, "remaining": result.remaining}
+
+
+@router.get("/demo/api-resource")
+async def demo_api_resource(
+    request: Request,
+    response: Response,
+    manager: LimiterManager = Depends(get_manager),
+) -> dict:
+    """Like /demo/resource, but gated by X-API-Key instead of X-Client-Id/IP
+    -- demonstrates per-API-key rate limiting. No fallback to IP here: a
+    missing key is rejected with 401, per the project's decision on this
+    (unlike demo_resource, which does fall back to IP)."""
+    api_key = extract_api_key(request.headers)
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+
+    result = await manager.check(api_key, route=request.url.path)
+    _apply_headers_and_raise_if_blocked(response, result)
+
+    return {"message": "here is your data", "api_key": api_key, "remaining": result.remaining}
