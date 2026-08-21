@@ -73,3 +73,23 @@ class Store(ABC):
         window's counter clears, without the limiter needing to track
         window-start timestamps itself.
         """
+
+    async def zadd_if_under_capacity(
+        self, key: str, window_start: float, capacity: int, score: float, member: str, ttl: float
+    ) -> tuple[bool, int]:
+        """Atomically: trim entries below `window_start`, count what's left,
+        and add `member` only if that count is still under `capacity`.
+
+        Returns (allowed, count_after_this_call). This replaces
+        sliding_window_log's current zremrangebyscore + zcard + zadd as
+        three separate calls, which is a real race: concurrent requests can
+        all read the same under-capacity count before any of them writes
+        back (confirmed empirically -- 50 concurrent requests at capacity=5
+        let 16 through with the old approach).
+
+        Not `@abstractmethod` yet -- deliberately, so existing Store
+        subclasses keep instantiating while the concrete implementations
+        land as separate, reviewable changes. Default raises to make an
+        accidental call-before-implemented loud rather than silently wrong.
+        """
+        raise NotImplementedError
