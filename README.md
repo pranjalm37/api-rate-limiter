@@ -113,23 +113,30 @@ client ──▶ /api/demo/resource ──▶ LimiterManager.check(client_id)
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/demo/resource` | GET | A protected endpoint, keyed on `X-Client-Id` or the caller's IP |
+| `/api/demo/api-resource` | GET | Like above, but keyed on `X-API-Key` -- missing key is a 401, no IP fallback |
 | `/api/limiter/check` | POST | Consume one unit of quota for a `client_id` |
 | `/api/limiter/peek` | GET | Read remaining quota without consuming any |
 | `/api/limiter/reset` | POST | Clear all limiter state |
 | `/api/config` | GET/POST | Read or change the algorithm, backend, and limits |
 
-Every response from `demo/resource` and `limiter/check` -- allowed or not --
-carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`,
-the same shape a real gateway would send. `X-RateLimit-Reset` means something
-different per algorithm: for the window algorithms it's when the window (or
-the oldest logged request) clears; for token bucket and GCRA it's when the
-bucket is back to *full* capacity, which is a distinct, larger number than
-`Retry-After` (the time until just one more request is allowed). A 429 also
-adds `Retry-After`:
+Every response from `demo/resource`, `demo/api-resource`, and `limiter/check`
+-- allowed or not -- carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+`X-RateLimit-Reset`, the same shape a real gateway would send. `X-RateLimit-Reset`
+means something different per algorithm: for the window algorithms it's when
+the window (or the oldest logged request) clears; for token bucket and GCRA
+it's when the bucket is back to *full* capacity, which is a distinct, larger
+number than `Retry-After` (the time until just one more request is allowed).
+A 429 also adds `Retry-After`:
 
 ```bash
 curl -i -H "X-Client-Id: demo" http://localhost:8000/api/demo/resource
+curl -i -H "X-API-Key: demo-key" http://localhost:8000/api/demo/api-resource
 ```
+
+`demo/resource` falls back to the caller's IP if `X-Client-Id` is missing.
+`demo/api-resource` doesn't -- a request with no `X-API-Key` (or a
+blank/whitespace-only one) gets a 401, not IP-based limiting, since there's
+no key to attribute the quota to.
 
 ## Two frontends
 
@@ -158,7 +165,7 @@ python scripts/screenshot.py
 pytest tests/ -v
 ```
 
-61 tests, no network or external services needed (a handful skip cleanly if
+65 tests, no network or external services needed (a handful skip cleanly if
 Redis isn't running locally). They cover each algorithm's limit and recovery
 behaviour, the concurrency guarantee, `peek()` not consuming quota, per-algorithm
 `reset_after` correctness, and the API surface including rate-limit headers,
