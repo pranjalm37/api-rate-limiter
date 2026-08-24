@@ -56,7 +56,6 @@ return {allowed, tostring(tokens)}
 # of them writes back, oversell the window -- confirmed empirically: 50
 # concurrent requests at capacity=5 let 16 through with the old approach.
 # ARGV: window_start, capacity, now, member, ttl_ms
-# Not registered/called anywhere yet -- that's a follow-up change.
 _LOG_TRIM_AND_ADD_IF_UNDER_CAPACITY = """
 redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
 local count = redis.call('ZCARD', KEYS[1])
@@ -81,6 +80,9 @@ class RedisStore(Store):
         self._client = redis.from_url(url, decode_responses=True)
         self._incr_script = self._client.register_script(_INCR_WITH_TTL)
         self._consume_token_script = self._client.register_script(_CONSUME_TOKEN)
+        self._log_trim_and_add_script = self._client.register_script(
+            _LOG_TRIM_AND_ADD_IF_UNDER_CAPACITY
+        )
 
     async def incr_and_get(self, key: str, ttl: float) -> int:
         ttl_ms = max(int(ttl * 1000), 1)
@@ -139,6 +141,15 @@ class RedisStore(Store):
         ttl_ms = await self._client.pttl(key)
         # redis-py returns -2 (no such key) or -1 (no TTL set) for absent state.
         return max(ttl_ms, 0) / 1000.0
+
+    async def zadd_if_under_capacity(
+        self, key: str, window_start: float, capacity: int, score: float, member: str, ttl: float
+    ) -> tuple[bool, int]:
+        ttl_ms = max(int(ttl * 1000), 1)
+        allowed, count = await self._log_trim_and_add_script(
+            keys=[key], args=[window_start, capacity, score, member, ttl_ms]
+        )
+        return bool(int(allowed)), int(count)
 
     async def close(self) -> None:
         await self._client.aclose()
