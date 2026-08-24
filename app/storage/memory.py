@@ -104,3 +104,26 @@ class MemoryStore(Store):
         async with self._lock:
             _, expires_at = self._counters.get(key, (0, 0.0))
             return max(expires_at - time.time(), 0.0)
+
+    async def zadd_if_under_capacity(
+        self, key: str, window_start: float, capacity: int, score: float, member: str, ttl: float
+    ) -> tuple[bool, int]:
+        # Trim, count, and conditionally add all inside one lock acquisition
+        # -- genuinely atomic, not just "each call individually locked" (the
+        # old zremrangebyscore+zcard+zadd sequence releases and re-acquires
+        # the lock between calls, which happens not to matter today only
+        # because asyncio never yields control on an uncontended acquire;
+        # that's an accident of the scheduler, not a real guarantee).
+        async with self._lock:
+            members = self._sorted_sets[key]
+            to_drop = [m for m, s in members.items() if s <= window_start]
+            for m in to_drop:
+                del members[m]
+
+            count = len(members)
+            allowed = count < capacity
+            if allowed:
+                members[member] = score
+                count += 1
+
+            return allowed, count
