@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import PlainTextResponse
 
 from app.api.apikey import extract_api_key
 from app.api.schemas import (
@@ -38,6 +39,23 @@ def _apply_headers_and_raise_if_blocked(response: Response, result: RateLimitRes
 @router.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+_PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+
+@router.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> Response:
+    """Scaffolding only -- static output proving the route and content type
+    work. Real counters/histograms, sourced from a MetricsRegistry wired
+    into the demo endpoints, land in follow-up changes."""
+    body = (
+        "# HELP rate_limiter_requests_total Total number of rate-limited "
+        "requests processed.\n"
+        "# TYPE rate_limiter_requests_total counter\n"
+        "rate_limiter_requests_total 0\n"
+    )
+    return PlainTextResponse(body, media_type=_PROMETHEUS_CONTENT_TYPE)
 
 
 @router.get("/config", response_model=ConfigResponse)
