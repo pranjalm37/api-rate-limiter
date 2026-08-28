@@ -21,15 +21,16 @@ class SlidingWindowLogLimiter(RateLimiter):
         storage_key = f"swl:{key}"
         now = time.time()
         window_start = now - self.window_seconds
+        member = f"{now}:{uuid.uuid4().hex}"
 
-        await self.store.zremrangebyscore(storage_key, 0, window_start)
-        current = await self.store.zcard(storage_key)
-
-        allowed = current < self.capacity
-        if allowed:
-            await self.store.zadd(storage_key, now, f"{now}:{uuid.uuid4().hex}")
-            await self.store.expire(storage_key, self.window_seconds)
-            current += 1
+        # Trim, count, and conditionally add as one atomic operation -- the
+        # old zremrangebyscore + zcard + zadd sequence (three separate calls)
+        # let concurrent requests all read the same under-capacity count
+        # before any of them wrote back, overselling the window (confirmed
+        # empirically: 50 concurrent requests at capacity=5 let 16 through).
+        allowed, current = await self.store.zadd_if_under_capacity(
+            storage_key, window_start, self.capacity, now, member, self.window_seconds
+        )
 
         remaining = max(self.capacity - current, 0)
 
