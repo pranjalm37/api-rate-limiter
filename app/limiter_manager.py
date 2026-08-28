@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.config import get_settings
 from app.limiters import Algorithm, RateLimiter, RateLimitResult, build_limiter
+from app.metrics import MetricsRegistry
 from app.route_limits import RouteLimitOverride
 from app.storage.base import Store
 from app.storage.gcra_memory import MemoryGCRAStore
@@ -45,6 +46,11 @@ class LimiterManager:
         self._route_limiters: dict[str, RateLimiter] = {}
         self._limiter: RateLimiter | None = None
         self._rebuild()
+        # Recorded explicitly by the demo endpoints only (not check() itself,
+        # and not automatically) -- /limiter/check is a synthetic GUI-testing
+        # path, not real traffic, and shouldn't count; a 401 for a missing
+        # API key never reaches this far either, since it never calls check().
+        self.metrics = MetricsRegistry()
 
     def set_route_limit(self, path: str, override: RouteLimitOverride) -> None:
         self.route_limits[path] = override

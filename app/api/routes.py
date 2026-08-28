@@ -158,6 +158,7 @@ async def demo_resource(
     back to the caller's IP), exactly how you'd gate a production API."""
     client_id = x_client_id or (request.client.host if request.client else "unknown")
     result = await manager.check(client_id, route=request.url.path)
+    manager.metrics.record_request()
     _apply_headers_and_raise_if_blocked(response, result)
 
     return {"message": "here is your data", "client_id": client_id, "remaining": result.remaining}
@@ -178,6 +179,7 @@ async def demo_api_resource(
         raise HTTPException(status_code=401, detail="Missing X-API-Key header")
 
     result = await manager.check(api_key, route=request.url.path)
+    manager.metrics.record_request()
     _apply_headers_and_raise_if_blocked(response, result)
 
     return {"message": "here is your data", "api_key": api_key, "remaining": result.remaining}
