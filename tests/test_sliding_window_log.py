@@ -52,3 +52,18 @@ async def test_reset_after_advances_as_the_oldest_entry_ages(store):
     # one reset_after tracks, and it's 0.1s closer to expiring now.
     second = await limiter.check("user-1")
     assert second.reset_after < first.reset_after
+
+
+@pytest.mark.asyncio
+async def test_concurrent_requests_never_exceed_capacity(store):
+    """Fires more concurrent requests than the window has room for and
+    asserts the total allowed count never exceeds capacity -- this is the
+    race condition zadd_if_under_capacity() exists to prevent. Against
+    real Redis this used to let 16 through at capacity 5; MemoryStore's old
+    per-call-locked approach happened not to show it (an accident of
+    asyncio's scheduler, not a real guarantee) -- either way, this now
+    locks in the atomic guarantee explicitly rather than incidentally."""
+    limiter = SlidingWindowLogLimiter(store, capacity=5, window_seconds=10)
+    results = await asyncio.gather(*[limiter.check("user-1") for _ in range(50)])
+    allowed_count = sum(r.allowed for r in results)
+    assert allowed_count == 5
