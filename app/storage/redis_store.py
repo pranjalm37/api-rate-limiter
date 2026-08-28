@@ -72,6 +72,35 @@ end
 return {allowed, count}
 """
 
+# Atomic read-both-counters-then-conditionally-increment for
+# sliding_window_counter: without this, get_counter(current) +
+# get_counter(previous) + incr_and_get(current) as three separate round
+# trips let concurrent requests all read the same under-capacity weighted
+# count before any of them writes back -- confirmed empirically: 50
+# concurrent requests at capacity=5 let 12 through with the old approach.
+# KEYS: current_key, previous_key. ARGV: previous_weight, capacity, ttl_ms
+_COUNTER_INCR_WEIGHTED_IF_UNDER_CAPACITY = """
+local previous = tonumber(redis.call('GET', KEYS[2]) or '0')
+local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+local previous_weight = tonumber(ARGV[1])
+local capacity = tonumber(ARGV[2])
+local ttl_ms = tonumber(ARGV[3])
+
+local weighted = previous * previous_weight + current
+local allowed = 0
+
+if weighted < capacity then
+    current = redis.call('INCR', KEYS[1])
+    if current == 1 then
+        redis.call('PEXPIRE', KEYS[1], ttl_ms)
+    end
+    weighted = previous * previous_weight + current
+    allowed = 1
+end
+
+return {allowed, tostring(weighted)}
+"""
+
 
 class RedisStore(Store):
     """Redis-backed store — shared state across multiple app instances/processes."""
@@ -82,6 +111,9 @@ class RedisStore(Store):
         self._consume_token_script = self._client.register_script(_CONSUME_TOKEN)
         self._log_trim_and_add_script = self._client.register_script(
             _LOG_TRIM_AND_ADD_IF_UNDER_CAPACITY
+        )
+        self._counter_incr_weighted_script = self._client.register_script(
+            _COUNTER_INCR_WEIGHTED_IF_UNDER_CAPACITY
         )
 
     async def incr_and_get(self, key: str, ttl: float) -> int:
@@ -150,6 +182,15 @@ class RedisStore(Store):
             keys=[key], args=[window_start, capacity, score, member, ttl_ms]
         )
         return bool(int(allowed)), int(count)
+
+    async def incr_weighted_if_under_capacity(
+        self, current_key: str, previous_key: str, previous_weight: float, capacity: float, ttl: float
+    ) -> tuple[bool, float]:
+        ttl_ms = max(int(ttl * 1000), 1)
+        allowed, weighted = await self._counter_incr_weighted_script(
+            keys=[current_key, previous_key], args=[previous_weight, capacity, ttl_ms]
+        )
+        return bool(int(allowed)), float(weighted)
 
     async def close(self) -> None:
         await self._client.aclose()

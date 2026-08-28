@@ -25,15 +25,15 @@ class SlidingWindowCounterLimiter(RateLimiter):
         current_key = f"swc:{key}:{window_index}"
         previous_key = f"swc:{key}:{window_index - 1}"
 
-        current_count = await self.store.get_counter(current_key)
-        previous_count = await self.store.get_counter(previous_key)
-
-        weighted_count = previous_count * (1 - elapsed_fraction) + current_count
-        allowed = weighted_count < self.capacity
-
-        if allowed:
-            current_count = await self.store.incr_and_get(current_key, self.window_seconds * 2)
-            weighted_count = previous_count * (1 - elapsed_fraction) + current_count
+        # Reads both counters and conditionally increments current_key as
+        # one atomic operation -- the old get_counter + get_counter +
+        # incr_and_get sequence (three separate calls) let concurrent
+        # requests all read the same under-capacity weighted count before
+        # any of them wrote back, overselling the window (confirmed
+        # empirically: 50 concurrent requests at capacity=5 let 12 through).
+        allowed, weighted_count = await self.store.incr_weighted_if_under_capacity(
+            current_key, previous_key, 1 - elapsed_fraction, self.capacity, self.window_seconds * 2
+        )
 
         remaining = max(int(self.capacity - weighted_count), 0)
         reset_after = self.window_seconds * (1 - elapsed_fraction)

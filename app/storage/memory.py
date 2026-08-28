@@ -127,3 +127,30 @@ class MemoryStore(Store):
                 count += 1
 
             return allowed, count
+
+    async def incr_weighted_if_under_capacity(
+        self, current_key: str, previous_key: str, previous_weight: float, capacity: float, ttl: float
+    ) -> tuple[bool, float]:
+        # Same reasoning as zadd_if_under_capacity: read both counters,
+        # decide, and conditionally increment all inside one lock
+        # acquisition instead of three separately-locked calls.
+        async with self._lock:
+            now = time.time()
+
+            prev_count, prev_expires_at = self._counters.get(previous_key, (0, 0.0))
+            previous = 0 if now >= prev_expires_at else prev_count
+
+            current, current_expires_at = self._counters.get(current_key, (0, 0.0))
+            if now >= current_expires_at:
+                current = 0
+                current_expires_at = now + ttl
+
+            weighted = previous * previous_weight + current
+            allowed = weighted < capacity
+
+            if allowed:
+                current += 1
+                weighted = previous * previous_weight + current
+
+            self._counters[current_key] = (current, current_expires_at)
+            return allowed, weighted

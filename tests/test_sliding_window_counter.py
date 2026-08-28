@@ -57,3 +57,16 @@ async def test_reset_after_decreases_within_the_same_window(store):
     await asyncio.sleep(0.05)
     second = await limiter.check("user-1")
     assert second.reset_after < first.reset_after
+
+
+@pytest.mark.asyncio
+async def test_concurrent_requests_never_exceed_capacity(store):
+    """Fires more concurrent requests than the window has room for and
+    asserts the total allowed count never exceeds capacity -- this is the
+    race condition incr_weighted_if_under_capacity() exists to prevent.
+    window_seconds is large so all 50 requests reliably land in the same
+    window regardless of how long the gather takes to run."""
+    limiter = SlidingWindowCounterLimiter(store, capacity=5, window_seconds=10)
+    results = await asyncio.gather(*[limiter.check("user-1") for _ in range(50)])
+    allowed_count = sum(r.allowed for r in results)
+    assert allowed_count == 5

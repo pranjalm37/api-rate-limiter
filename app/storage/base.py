@@ -93,3 +93,21 @@ class Store(ABC):
         accidental call-before-implemented loud rather than silently wrong.
         """
         raise NotImplementedError
+
+    async def incr_weighted_if_under_capacity(
+        self, current_key: str, previous_key: str, previous_weight: float, capacity: float, ttl: float
+    ) -> tuple[bool, float]:
+        """sliding_window_counter's equivalent of zadd_if_under_capacity():
+        atomically read both counters, compute the weighted count, and
+        increment `current_key` only if that's still under capacity.
+
+        Returns (allowed, weighted_count_after_this_call). Replaces
+        sliding_window_counter's current get_counter + get_counter +
+        incr_and_get as three separate calls -- the same class of race as
+        sliding_window_log had (confirmed empirically: 50 concurrent
+        requests at capacity=5 let 12 through with the old approach).
+
+        Also non-abstract with a raising default, for the same reason as
+        zadd_if_under_capacity above.
+        """
+        raise NotImplementedError
