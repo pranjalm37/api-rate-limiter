@@ -14,6 +14,7 @@ from app.api.schemas import (
 )
 from app.limiter_manager import LimiterManager, get_manager
 from app.limiters import RateLimitResult
+from app.metrics import render_prometheus
 from app.route_limits import RouteLimitOverride
 
 router = APIRouter()
@@ -45,17 +46,10 @@ _PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
 
 @router.get("/metrics", response_class=PlainTextResponse)
-async def metrics() -> Response:
-    """Scaffolding only -- static output proving the route and content type
-    work. Real counters/histograms, sourced from a MetricsRegistry wired
-    into the demo endpoints, land in follow-up changes."""
-    body = (
-        "# HELP rate_limiter_requests_total Total number of rate-limited "
-        "requests processed.\n"
-        "# TYPE rate_limiter_requests_total counter\n"
-        "rate_limiter_requests_total 0\n"
-    )
-    return PlainTextResponse(body, media_type=_PROMETHEUS_CONTENT_TYPE)
+async def metrics(manager: LimiterManager = Depends(get_manager)) -> Response:
+    """Real counters, sourced from the MetricsRegistry wired into the demo
+    endpoints. Latency histograms land in a follow-up change."""
+    return PlainTextResponse(render_prometheus(manager.metrics), media_type=_PROMETHEUS_CONTENT_TYPE)
 
 
 @router.get("/config", response_model=ConfigResponse)
