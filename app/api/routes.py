@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 
@@ -18,6 +20,15 @@ from app.metrics import render_prometheus
 from app.route_limits import RouteLimitOverride
 
 router = APIRouter()
+
+
+async def _checked_with_latency(manager: LimiterManager, key: str, route: str) -> RateLimitResult:
+    """Wraps manager.check() with a latency measurement, recorded into
+    MetricsRegistry as a raw sample -- not bucketed into a histogram yet."""
+    start = time.perf_counter()
+    result = await manager.check(key, route=route)
+    manager.metrics.record_latency(time.perf_counter() - start)
+    return result
 
 
 def _apply_headers_and_raise_if_blocked(response: Response, result: RateLimitResult) -> None:
@@ -151,7 +162,7 @@ async def demo_resource(
     """A real protected endpoint. Rate limited by X-Client-Id header (falls
     back to the caller's IP), exactly how you'd gate a production API."""
     client_id = x_client_id or (request.client.host if request.client else "unknown")
-    result = await manager.check(client_id, route=request.url.path)
+    result = await _checked_with_latency(manager, client_id, request.url.path)
     manager.metrics.record_request(manager.config.algorithm.value, result.allowed)
     _apply_headers_and_raise_if_blocked(response, result)
 
@@ -172,7 +183,7 @@ async def demo_api_resource(
     if api_key is None:
         raise HTTPException(status_code=401, detail="Missing X-API-Key header")
 
-    result = await manager.check(api_key, route=request.url.path)
+    result = await _checked_with_latency(manager, api_key, request.url.path)
     manager.metrics.record_request(manager.config.algorithm.value, result.allowed)
     _apply_headers_and_raise_if_blocked(response, result)
 

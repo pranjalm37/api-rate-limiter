@@ -6,13 +6,17 @@ class MetricsRegistry:
 
     Single-process, in-memory -- same scope as the rest of this app's
     non-Redis state. Wired into the demo endpoints only (not /limiter/check,
-    a synthetic GUI-testing path); latency histograms are a follow-up.
+    a synthetic GUI-testing path); bucketing latency into a histogram is a
+    follow-up (raw samples are collected already).
     """
 
     def __init__(self) -> None:
         self.total_requests = 0
         # (algorithm, "allowed" | "rejected") -> count
         self._by_algorithm_outcome: dict[tuple[str, str], int] = defaultdict(int)
+        # Raw check() latency samples, in seconds. Not bucketed into a
+        # histogram yet -- that's a follow-up change.
+        self._latencies: list[float] = []
 
     def record_request(self, algorithm: str, allowed: bool) -> None:
         self.total_requests += 1
@@ -22,6 +26,13 @@ class MetricsRegistry:
     def counts_by_algorithm_outcome(self) -> dict[tuple[str, str], int]:
         """A snapshot copy -- callers must not be able to mutate internal state."""
         return dict(self._by_algorithm_outcome)
+
+    def record_latency(self, seconds: float) -> None:
+        self._latencies.append(seconds)
+
+    def latency_samples(self) -> list[float]:
+        """A snapshot copy -- callers must not be able to mutate internal state."""
+        return list(self._latencies)
 
 
 def render_prometheus(registry: MetricsRegistry) -> str:
