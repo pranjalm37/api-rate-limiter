@@ -1,5 +1,22 @@
 from collections import defaultdict
 
+# Seconds. Spans microseconds (in-memory checks, typically single-digit
+# microseconds) through low hundreds of milliseconds (a slow/contended
+# Redis round trip) -- Prometheus's own default buckets top out at 10s and
+# start at 5ms, which would dump nearly everything this app produces into
+# the smallest bucket and tell you nothing.
+DEFAULT_LATENCY_BUCKETS = (
+    0.0001,  # 100us
+    0.0005,  # 500us
+    0.001,  # 1ms
+    0.005,  # 5ms
+    0.01,  # 10ms
+    0.05,  # 50ms
+    0.1,  # 100ms
+    0.5,  # 500ms
+    1.0,  # 1s
+)
+
 
 class MetricsRegistry:
     """In-process counters backing /api/metrics.
@@ -33,6 +50,24 @@ class MetricsRegistry:
     def latency_samples(self) -> list[float]:
         """A snapshot copy -- callers must not be able to mutate internal state."""
         return list(self._latencies)
+
+    def latency_histogram(
+        self, buckets: tuple[float, ...] = DEFAULT_LATENCY_BUCKETS
+    ) -> dict[str, object]:
+        """Bucket the raw samples into Prometheus histogram shape: cumulative
+        per-boundary counts (each counts every sample <= that boundary, plus
+        a final +Inf bucket covering everything), a sum, and a total count.
+
+        Not rendered as Prometheus text yet -- that's a follow-up change.
+        """
+        samples = self._latencies
+        cumulative = [(boundary, sum(1 for s in samples if s <= boundary)) for boundary in buckets]
+        cumulative.append((float("inf"), len(samples)))
+        return {
+            "buckets": cumulative,
+            "sum": sum(samples),
+            "count": len(samples),
+        }
 
 
 def render_prometheus(registry: MetricsRegistry) -> str:
