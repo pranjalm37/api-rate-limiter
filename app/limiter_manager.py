@@ -131,6 +131,25 @@ class LimiterManager:
             )
         return self._route_limiters[route], f"route:{route}:"
 
+    def _memory_fallback_limiter_for(self, route: str | None) -> tuple[RateLimiter, str]:
+        """The fallback-routing mechanism, decided: check()/peek() catch
+        REDIS_CONNECTION_ERRORS and retry via THIS method, rather than
+        having _store_for itself consult _redis_healthy.
+
+        Why not _store_for: it's also called by reconfigure() and reset(),
+        which need their own separate decision about Redis-down behavior
+        (surface the error vs. also fall back) -- baking health-awareness
+        into _store_for would silently change those too. Keeping the
+        fallback decision at the check()/peek() call sites keeps it scoped
+        to exactly where it's needed.
+
+        Mirrors _limiter_for's (limiter, key_prefix) return shape and the
+        same route-override honoring, but always builds against
+        self._memory_store regardless of self.config.backend. Not
+        implemented yet -- that's the next item in this batch.
+        """
+        raise NotImplementedError
+
     async def reconfigure(
         self,
         algorithm: Algorithm,
