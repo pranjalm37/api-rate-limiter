@@ -1,13 +1,17 @@
+import logging
 from dataclasses import dataclass
 
 from app.config import get_settings
 from app.limiters import Algorithm, RateLimiter, RateLimitResult, build_limiter
 from app.metrics import MetricsRegistry
+from app.redis_health import REDIS_CONNECTION_ERRORS
 from app.route_limits import RouteLimitOverride
 from app.storage.base import Store
 from app.storage.gcra_memory import MemoryGCRAStore
 from app.storage.gcra_store import GCRAStore
 from app.storage.memory import MemoryStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -146,11 +150,21 @@ class LimiterManager:
 
     async def check(self, client_id: str, route: str | None = None) -> RateLimitResult:
         limiter, prefix = self._limiter_for(route)
-        return await limiter.check(prefix + client_id)
+        try:
+            return await limiter.check(prefix + client_id)
+        except REDIS_CONNECTION_ERRORS:
+            # Logged only for now -- still raises. Falling back to the
+            # memory backend instead is a follow-up change.
+            logger.warning("Redis unreachable during check(); no fallback wired up yet", exc_info=True)
+            raise
 
     async def peek(self, client_id: str, route: str | None = None) -> int:
         limiter, prefix = self._limiter_for(route)
-        return await limiter.peek(prefix + client_id)
+        try:
+            return await limiter.peek(prefix + client_id)
+        except REDIS_CONNECTION_ERRORS:
+            logger.warning("Redis unreachable during peek(); no fallback wired up yet", exc_info=True)
+            raise
 
 
 _manager: LimiterManager | None = None
