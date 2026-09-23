@@ -225,8 +225,9 @@ class LimiterManager:
             return await limiter.peek(prefix + client_id)
         except REDIS_CONNECTION_ERRORS:
             self._redis_healthy = False
-            logger.warning("Redis unreachable during peek(); no fallback wired up yet", exc_info=True)
-            raise
+            logger.warning("Redis unreachable during peek(); falling back to memory backend", exc_info=True)
+            fallback_limiter, fallback_prefix = self._memory_fallback_limiter_for(route)
+            return await fallback_limiter.peek(fallback_prefix + client_id)
 
 
 _manager: LimiterManager | None = None
