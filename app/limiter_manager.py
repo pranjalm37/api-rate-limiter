@@ -153,8 +153,9 @@ class LimiterManager:
         try:
             return await limiter.check(prefix + client_id)
         except REDIS_CONNECTION_ERRORS:
-            # Logged only for now -- still raises. Falling back to the
-            # memory backend instead is a follow-up change.
+            # Flagged for the fallback-routing follow-up to consult -- this
+            # call still raises for now, since nothing reads the flag yet.
+            self._redis_healthy = False
             logger.warning("Redis unreachable during check(); no fallback wired up yet", exc_info=True)
             raise
 
