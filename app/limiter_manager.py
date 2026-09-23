@@ -48,6 +48,13 @@ class LimiterManager:
         # by route path. Cleared whenever the global config or a specific
         # route's override changes, so a stale capacity never lingers.
         self._route_limiters: dict[str, RateLimiter] = {}
+        # Same idea, but always memory-backed -- used when check()/peek()
+        # catch a Redis failure and retry. Separate from _limiter/
+        # _route_limiters since those may be Redis-backed; mixing the two
+        # caches would serve a stale Redis-backed limiter after a failure,
+        # or a stale memory one after Redis recovers.
+        self._memory_fallback_limiter: RateLimiter | None = None
+        self._memory_fallback_route_limiters: dict[str, RateLimiter] = {}
         self._limiter: RateLimiter | None = None
         self._rebuild()
         # Recorded explicitly by the demo endpoints only (not check() itself,
@@ -99,6 +106,8 @@ class LimiterManager:
         # Route limiters were built against the old global config -- drop
         # them so the next check()/peek() rebuilds against the new one.
         self._route_limiters.clear()
+        self._memory_fallback_limiter = None
+        self._memory_fallback_route_limiters.clear()
 
     def _limiter_for(self, route: str | None) -> tuple[RateLimiter, str]:
         """Picks the limiter to use, and a key prefix to keep its storage
@@ -144,11 +153,44 @@ class LimiterManager:
         to exactly where it's needed.
 
         Mirrors _limiter_for's (limiter, key_prefix) return shape and the
-        same route-override honoring, but always builds against
-        self._memory_store regardless of self.config.backend. Not
-        implemented yet -- that's the next item in this batch.
+        same route-override honoring, but always builds against the memory
+        store regardless of self.config.backend. Reuses _limiter_for's key
+        prefixes rather than a distinct "fallback:" marker -- there's no
+        collision risk (memory and Redis are separate Store instances), and
+        it means state naturally carries over if the app is later
+        reconfigured to backend="memory" outright.
         """
-        raise NotImplementedError
+        memory_store = self._gcra_memory_store if self.config.algorithm == Algorithm.GCRA else self._memory_store
+
+        if self._memory_fallback_limiter is None:
+            self._memory_fallback_limiter = build_limiter(
+                self.config.algorithm,
+                memory_store,
+                self.config.capacity,
+                self.config.window_seconds,
+                self.config.refill_rate,
+            )
+
+        if route is None:
+            return self._memory_fallback_limiter, ""
+
+        override = self.route_limits.get(route)
+        if override is None:
+            return self._memory_fallback_limiter, ""
+        if override.capacity is None and override.window_seconds is None and override.refill_rate is None:
+            return self._memory_fallback_limiter, ""
+
+        if route not in self._memory_fallback_route_limiters:
+            self._memory_fallback_route_limiters[route] = build_limiter(
+                self.config.algorithm,
+                memory_store,
+                override.capacity if override.capacity is not None else self.config.capacity,
+                override.window_seconds
+                if override.window_seconds is not None
+                else self.config.window_seconds,
+                override.refill_rate if override.refill_rate is not None else self.config.refill_rate,
+            )
+        return self._memory_fallback_route_limiters[route], f"route:{route}:"
 
     async def reconfigure(
         self,
