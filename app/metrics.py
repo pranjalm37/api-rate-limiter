@@ -57,8 +57,6 @@ class MetricsRegistry:
         """Bucket the raw samples into Prometheus histogram shape: cumulative
         per-boundary counts (each counts every sample <= that boundary, plus
         a final +Inf bucket covering everything), a sum, and a total count.
-
-        Not rendered as Prometheus text yet -- that's a follow-up change.
         """
         samples = self._latencies
         cumulative = [(boundary, sum(1 for s in samples if s <= boundary)) for boundary in buckets]
@@ -91,4 +89,15 @@ def render_prometheus(registry: MetricsRegistry) -> str:
         lines.append(
             f'rate_limiter_requests_by_outcome_total{{algorithm="{algorithm}",outcome="{outcome}"}} {count}'
         )
+
+    histogram = registry.latency_histogram()
+    lines.append("")
+    lines.append("# HELP rate_limiter_check_latency_seconds Latency of rate limiter check() calls.")
+    lines.append("# TYPE rate_limiter_check_latency_seconds histogram")
+    for boundary, count in histogram["buckets"]:
+        le = "+Inf" if boundary == float("inf") else str(boundary)
+        lines.append(f'rate_limiter_check_latency_seconds_bucket{{le="{le}"}} {count}')
+    lines.append(f"rate_limiter_check_latency_seconds_sum {histogram['sum']}")
+    lines.append(f"rate_limiter_check_latency_seconds_count {histogram['count']}")
+
     return "\n".join(lines) + "\n"
