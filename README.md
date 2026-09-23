@@ -41,6 +41,15 @@ time, so it needs a read with no side effects. If it used `check()` the chart's
 own polling would count as traffic and skew what it was measuring. That's what
 `peek()` is for, and there are tests asserting it never spends anything.
 
+**Redis going down doesn't take the API down with it.** `check()`/`peek()`
+catch a real Redis connection failure (confirmed empirically which
+exceptions actually mean "unreachable," not just guessed from the docs) and
+retry against the in-memory backend instead of raising -- for every
+algorithm, GCRA included, since the fallback lives at the call site rather
+than inside any one algorithm. Verified against a genuinely dead port, not a
+mock. Recovering back to Redis once it's reachable again isn't wired up
+yet -- see Next.
+
 ## Quickstart
 
 ```bash
@@ -165,18 +174,18 @@ python scripts/screenshot.py
 pytest tests/ -v
 ```
 
-65 tests, no network or external services needed (a handful skip cleanly if
+84 tests, no network or external services needed (a handful skip cleanly if
 Redis isn't running locally). They cover each algorithm's limit and recovery
 behaviour, the concurrency guarantee, `peek()` not consuming quota, per-algorithm
-`reset_after` correctness, and the API surface including rate-limit headers,
-429s, and validation. CI runs them on every push, then builds the Docker image
-and checks the container comes up healthy.
+`reset_after` correctness, the Redis-down fallback, and the API surface
+including rate-limit headers, 429s, and validation. CI runs them on every
+push, then builds the Docker image and checks the container comes up healthy.
 
 ## Next
 
-- Per-endpoint and per-tier limits instead of one global configuration
+- Recovery back to Redis once it's reachable again (the fallback only goes
+  one way right now)
 - Middleware so any route can be decorated rather than calling the limiter directly
-- Prometheus metrics for allow and deny rates
 - Benchmarks comparing the two backends under concurrent load
 
 ## License
