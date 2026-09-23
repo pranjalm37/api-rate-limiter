@@ -51,6 +51,11 @@ class LimiterManager:
         # path, not real traffic, and shouldn't count; a 401 for a missing
         # API key never reaches this far either, since it never calls check().
         self.metrics = MetricsRegistry()
+        # Whether the Redis backend is believed reachable right now. Not
+        # read or written anywhere yet -- that's a follow-up change (a
+        # caught REDIS_CONNECTION_ERRORS flips this to False, and
+        # _store_for consults it to route to the memory backend instead).
+        self._redis_healthy = True
 
     def set_route_limit(self, path: str, override: RouteLimitOverride) -> None:
         self.route_limits[path] = override
