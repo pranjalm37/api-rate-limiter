@@ -164,6 +164,7 @@ class LimiterManager:
         try:
             return await limiter.peek(prefix + client_id)
         except REDIS_CONNECTION_ERRORS:
+            self._redis_healthy = False
             logger.warning("Redis unreachable during peek(); no fallback wired up yet", exc_info=True)
             raise
 
