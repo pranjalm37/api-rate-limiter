@@ -214,11 +214,10 @@ class LimiterManager:
         try:
             return await limiter.check(prefix + client_id)
         except REDIS_CONNECTION_ERRORS:
-            # Flagged for the fallback-routing follow-up to consult -- this
-            # call still raises for now, since nothing reads the flag yet.
             self._redis_healthy = False
-            logger.warning("Redis unreachable during check(); no fallback wired up yet", exc_info=True)
-            raise
+            logger.warning("Redis unreachable during check(); falling back to memory backend", exc_info=True)
+            fallback_limiter, fallback_prefix = self._memory_fallback_limiter_for(route)
+            return await fallback_limiter.check(fallback_prefix + client_id)
 
     async def peek(self, client_id: str, route: str | None = None) -> int:
         limiter, prefix = self._limiter_for(route)
